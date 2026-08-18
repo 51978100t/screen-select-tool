@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ScreenSelectTest</string>
+    <string name="service_description">Тестовый сервис для проверки перехвата кнопки Home</string>
+</resources>
