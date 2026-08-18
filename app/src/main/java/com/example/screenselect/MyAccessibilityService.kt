@@ -12,12 +12,15 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 
 class MyAccessibilityService : AccessibilityService() {
 
     private val channelId = "screenselect_channel"
     private var windowManager: WindowManager? = null
-    private var selectionView: View? = null
+    private var selectionContainer: View? = null
 
     private var startY = 0f
     private var tracking = false
@@ -75,13 +78,57 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     private fun openSelectionScreen() {
-        if (selectionView != null) return
+        if (selectionContainer != null) return
 
-        val view = SelectionOverlayView(this) { rect ->
-            closeSelectionScreen()
-            onAreaSelected(rect)
+        val container = FrameLayout(this)
+
+        val toolbar = LinearLayout(this)
+        toolbar.orientation = LinearLayout.HORIZONTAL
+        toolbar.visibility = View.GONE
+
+        val overlay = SelectionOverlayView(this) { rect ->
+            if (rect == null) {
+                toolbar.visibility = View.GONE
+            } else {
+                toolbar.visibility = View.VISIBLE
+                showNotification(
+                    "Область выделена",
+                    "left=" + rect.left + " top=" + rect.top + " right=" + rect.right + " bottom=" + rect.bottom
+                )
+            }
         }
-        selectionView = view
+
+        container.addView(
+            overlay,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        )
+
+        val closeButton = Button(this)
+        closeButton.text = "\u2715 Закрыть"
+        closeButton.setOnClickListener {
+            closeSelectionScreen()
+        }
+
+        val redoButton = Button(this)
+        redoButton.text = "\u27F3 Заново"
+        redoButton.setOnClickListener {
+            overlay.clearSelection()
+            toolbar.visibility = View.GONE
+        }
+
+        toolbar.addView(closeButton)
+        toolbar.addView(redoButton)
+
+        val toolbarParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        toolbarParams.gravity = Gravity.TOP or Gravity.END
+        toolbarParams.topMargin = 60
+        toolbarParams.rightMargin = 40
+        container.addView(toolbar, toolbarParams)
+
+        selectionContainer = container
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -91,21 +138,14 @@ class MyAccessibilityService : AccessibilityService() {
             PixelFormat.TRANSLUCENT
         )
 
-        windowManager?.addView(view, params)
+        windowManager?.addView(container, params)
     }
 
     private fun closeSelectionScreen() {
-        selectionView?.let {
+        selectionContainer?.let {
             windowManager?.removeView(it)
         }
-        selectionView = null
-    }
-
-    private fun onAreaSelected(rect: Rect) {
-        showNotification(
-            "Область выделена",
-            "left=" + rect.left + " top=" + rect.top + " right=" + rect.right + " bottom=" + rect.bottom
-        )
+        selectionContainer = null
     }
 
     private fun createChannel() {
