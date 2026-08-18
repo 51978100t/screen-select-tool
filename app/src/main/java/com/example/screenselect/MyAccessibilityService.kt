@@ -4,41 +4,76 @@ import android.accessibilityservice.AccessibilityService
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
+import android.graphics.PixelFormat
 import android.os.Build
-import android.view.KeyEvent
+import android.view.Gravity
+import android.view.MotionEvent
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 
 class MyAccessibilityService : AccessibilityService() {
 
-    private var homeDownTime: Long = 0
     private val channelId = "screenselect_channel"
+    private var windowManager: WindowManager? = null
+
+    private var startY = 0f
+    private var tracking = false
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
-
     override fun onInterrupt() {}
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         createChannel()
-        showNotification("Сервис запущен", "onServiceConnected сработал")
+        showNotification("Сервис запущен", "Полоска-ловушка добавлена снизу")
+        addBottomStrip()
     }
 
-    override fun onKeyEvent(event: KeyEvent): Boolean {
-        if (event.keyCode == KeyEvent.KEYCODE_HOME) {
+    private fun addBottomStrip() {
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+
+        val strip = View(this)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            80,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.BOTTOM
+
+        strip.setOnTouchListener { _, event ->
             when (event.action) {
-                KeyEvent.ACTION_DOWN -> {
-                    if (event.repeatCount == 0) {
-                        homeDownTime = System.currentTimeMillis()
+                MotionEvent.ACTION_DOWN -> {
+                    startY = event.rawY
+                    tracking = true
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (tracking) {
+                        val delta = startY - event.rawY
+                        if (delta > 100) {
+                            tracking = false
+                            onSwipeUpDetected()
+                        }
                     }
-                    showNotification("HOME DOWN", "Нажатие поймано")
+                    true
                 }
-                KeyEvent.ACTION_UP -> {
-                    val duration = System.currentTimeMillis() - homeDownTime
-                    showNotification("HOME UP", "Длительность=" + duration + "мс")
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    tracking = false
+                    true
                 }
+                else -> false
             }
         }
-        return super.onKeyEvent(event)
+
+        windowManager?.addView(strip, params)
+    }
+
+    private fun onSwipeUpDetected() {
+        showNotification("Свайп вверх поймал!", "Ловушка сработала")
     }
 
     private fun createChannel() {
