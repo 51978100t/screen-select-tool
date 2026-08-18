@@ -1,14 +1,17 @@
 package com.example.screenselect
 
 import android.accessibilityservice.AccessibilityService
-import android.util.Log
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
+import android.os.Build
 import android.view.KeyEvent
 import android.view.accessibility.AccessibilityEvent
-import android.widget.Toast
 
 class MyAccessibilityService : AccessibilityService() {
 
     private var homeDownTime: Long = 0
+    private val channelId = "screenselect_channel"
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
@@ -16,7 +19,8 @@ class MyAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        Toast.makeText(this, "Сервис запущен и подключен", Toast.LENGTH_SHORT).show()
+        createChannel()
+        showNotification("Сервис запущен", "onServiceConnected сработал")
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
@@ -26,14 +30,37 @@ class MyAccessibilityService : AccessibilityService() {
                     if (event.repeatCount == 0) {
                         homeDownTime = System.currentTimeMillis()
                     }
-                    Toast.makeText(this, "HOME DOWN поймано", Toast.LENGTH_SHORT).show()
+                    showNotification("HOME DOWN", "Нажатие поймано")
                 }
                 KeyEvent.ACTION_UP -> {
                     val duration = System.currentTimeMillis() - homeDownTime
-                    Toast.makeText(this, "HOME UP, длительность=" + duration + "мс", Toast.LENGTH_SHORT).show()
+                    showNotification("HOME UP", "Длительность=" + duration + "мс")
                 }
             }
         }
         return super.onKeyEvent(event)
+    }
+
+    private fun createChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "ScreenSelect",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun showNotification(title: String, text: String) {
+        val builder = NotificationCompat.Builder(this, channelId)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(1, builder.build())
     }
 }
