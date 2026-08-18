@@ -418,20 +418,7 @@ class MyAccessibilityService : AccessibilityService() {
             val languageIdentifier = LanguageIdentification.getClient()
             languageIdentifier.identifyLanguage(text)
                 .addOnSuccessListener { languageCode ->
-                    if (languageCode == "ru") {
-                        showRussianTargetChoice(text)
-                        return@addOnSuccessListener
-                    }
-
-                    val sourceLang = if (languageCode == "und") {
-                        TranslateLanguage.ENGLISH
-                    } else {
-                        TranslateLanguage.fromLanguageTag(languageCode) ?: TranslateLanguage.ENGLISH
-                    }
-
-                    translateText(text, sourceLang, TranslateLanguage.RUSSIAN) { translated ->
-                        showTextResultScreen(translated)
-                    }
+                    showEditableTextScreen(text, languageCode)
                 }
                 .addOnFailureListener { e ->
                     showNotification("Ошибка определения языка", e.message ?: "неизвестно")
@@ -460,13 +447,10 @@ class MyAccessibilityService : AccessibilityService() {
             }
     }
 
-    private fun showRussianTargetChoice(text: String) {
+    private fun showEditableTextScreen(text: String, languageCode: String) {
         val container = FrameLayout(this)
         container.setBackgroundColor(Color.TRANSPARENT)
         container.isClickable = true
-        container.setOnClickListener {
-            windowManager?.removeView(container)
-        }
 
         val (screenWidth, screenHeight) = getScreenSize()
 
@@ -482,13 +466,23 @@ class MyAccessibilityService : AccessibilityService() {
         card.background = cardBg
         card.setPadding(dp(20), dp(20), dp(20), dp(16))
 
+        val hint = android.widget.TextView(this)
+        hint.text = "Проверь текст перед переводом:"
+        hint.setTextColor(Color.parseColor("#7A7A8A"))
+        hint.textSize = 12f
+        hint.setPadding(0, 0, 0, dp(10))
+        card.addView(hint)
+
+        val editText = android.widget.EditText(this)
+        editText.setText(text)
+        editText.setTextColor(Color.WHITE)
+        editText.textSize = 17f
+        editText.gravity = Gravity.TOP or Gravity.START
+        editText.background = null
+        editText.setPadding(0, 0, 0, 0)
+
         val scrollView = android.widget.ScrollView(this)
-        val textView = android.widget.TextView(this)
-        textView.text = text
-        textView.setTextColor(Color.WHITE)
-        textView.textSize = 17f
-        textView.setTextIsSelectable(true)
-        scrollView.addView(textView)
+        scrollView.addView(editText)
 
         val scrollParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -506,23 +500,43 @@ class MyAccessibilityService : AccessibilityService() {
         rowLp.topMargin = dp(16)
         buttonsRow.layoutParams = rowLp
 
-        val enButton = createIconButton("English") {
-            windowManager?.removeView(container)
-            translateText(text, TranslateLanguage.RUSSIAN, TranslateLanguage.ENGLISH) { translated ->
-                showTextResultScreen(translated)
-            }
-        }
-        val estButton = createIconButton("Eesti") {
-            windowManager?.removeView(container)
-            translateText(text, TranslateLanguage.RUSSIAN, "et") { translated ->
-                showTextResultScreen(translated)
-            }
-        }
         val closeButton = createIconButton("Закрыть") {
             windowManager?.removeView(container)
         }
-        buttonsRow.addView(enButton)
-        buttonsRow.addView(estButton)
+
+        if (languageCode == "ru") {
+            val enButton = createIconButton("English") {
+                val edited = editText.text.toString()
+                windowManager?.removeView(container)
+                translateText(edited, TranslateLanguage.RUSSIAN, TranslateLanguage.ENGLISH) { translated ->
+                    showTextResultScreen(translated)
+                }
+            }
+            val estButton = createIconButton("Eesti") {
+                val edited = editText.text.toString()
+                windowManager?.removeView(container)
+                translateText(edited, TranslateLanguage.RUSSIAN, "et") { translated ->
+                    showTextResultScreen(translated)
+                }
+            }
+            buttonsRow.addView(enButton)
+            buttonsRow.addView(estButton)
+        } else {
+            val sourceLang = if (languageCode == "und") {
+                TranslateLanguage.ENGLISH
+            } else {
+                TranslateLanguage.fromLanguageTag(languageCode) ?: TranslateLanguage.ENGLISH
+            }
+            val translateButton = createIconButton("Перевести") {
+                val edited = editText.text.toString()
+                windowManager?.removeView(container)
+                translateText(edited, sourceLang, TranslateLanguage.RUSSIAN) { translated ->
+                    showTextResultScreen(translated)
+                }
+            }
+            buttonsRow.addView(translateButton)
+        }
+
         buttonsRow.addView(closeButton)
         card.addView(buttonsRow)
 
@@ -537,9 +551,10 @@ class MyAccessibilityService : AccessibilityService() {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            0,
             PixelFormat.TRANSLUCENT
         )
+        params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
 
         windowManager?.addView(container, params)
     }
