@@ -68,7 +68,7 @@ class MainActivity : Activity() {
         startButton.layoutParams = btnParams
 
         startButton.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            openAccessibilitySettings()
         }
 
         root.addView(title)
@@ -99,6 +99,20 @@ class MainActivity : Activity() {
             statusBg.setColor(Color.parseColor("#2A2A2A"))
         }
         statusText.background = statusBg
+    }
+
+    private fun openAccessibilitySettings() {
+        try {
+            val componentName = ComponentName(this, MyAccessibilityService::class.java).flattenToString()
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            intent.putExtra(":settings:fragment_args_key", componentName)
+            val bundle = Bundle()
+            bundle.putString(":settings:fragment_args_key", componentName)
+            intent.putExtra(":settings:show_fragment_args", bundle)
+            startActivity(intent)
+        } catch (e: Exception) {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
