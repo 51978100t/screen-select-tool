@@ -17,9 +17,22 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            storeFile file("release.keystore")
+            storePassword "screenselect123"
+            keyAlias "screenselect"
+            keyPassword "screenselect123"
+        }
+    }
+
     buildTypes {
         debug {
             minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
         }
     }
 

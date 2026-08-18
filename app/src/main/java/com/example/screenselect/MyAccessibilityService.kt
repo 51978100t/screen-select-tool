@@ -7,7 +7,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -15,10 +14,8 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.provider.MediaStore
 import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
@@ -223,38 +220,27 @@ class MyAccessibilityService : AccessibilityService() {
             closeSelectionScreen()
         }
 
-        val redoButton = createIconButton("\u27F3") {
-            overlay.clearSelection()
-            toolbar.visibility = View.GONE
-        }
-
-        val zoomButton = createIconButton("\uD83D\uDD0D") {
+        val zoomButton = createIconButton("Просмотр") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> showZoomScreen(bitmap) } }
         }
 
-        val textButton = createIconButton("\uD83D\uDCCB") {
+        val textButton = createIconButton("Текст") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> recognizeAndShowText(bitmap) } }
         }
 
-        val translateButton = createIconButton("\uD83C\uDF10") {
+        val translateButton = createIconButton("Перевод") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> translateAndShowText(bitmap) } }
         }
 
-        val shareButton = createIconButton("\uD83D\uDCE4") {
+        val shareButton = createIconButton("Поделиться") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> shareScreenshot(bitmap) } }
         }
 
-        val saveButton = createIconButton("\uD83D\uDCBE") {
-            lastRect?.let { rect -> captureCropped(rect) { bitmap -> saveToGallery(bitmap) } }
-        }
-
         toolbar.addView(closeButton)
-        toolbar.addView(redoButton)
         toolbar.addView(zoomButton)
         toolbar.addView(textButton)
         toolbar.addView(translateButton)
         toolbar.addView(shareButton)
-        toolbar.addView(saveButton)
 
         val toolbarParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -444,44 +430,61 @@ class MyAccessibilityService : AccessibilityService() {
 
     private fun showTextResultScreen(text: String) {
         val container = FrameLayout(this)
-        container.setBackgroundColor(Color.parseColor("#EE000000"))
+        container.setBackgroundColor(Color.parseColor("#99000000"))
+
+        val (screenWidth, screenHeight) = getScreenSize()
+
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+
+        val cardBg = GradientDrawable()
+        cardBg.shape = GradientDrawable.RECTANGLE
+        cardBg.cornerRadius = dp(18).toFloat()
+        cardBg.setColor(Color.parseColor("#F0222222"))
+        card.background = cardBg
+        card.setPadding(dp(20), dp(20), dp(20), dp(16))
 
         val scrollView = android.widget.ScrollView(this)
         val textView = android.widget.TextView(this)
         textView.text = text
         textView.setTextColor(Color.WHITE)
-        textView.textSize = 18f
-        textView.setPadding(dp(24), dp(24), dp(24), dp(24))
+        textView.textSize = 17f
         scrollView.addView(textView)
 
-        val scrollParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
+        val scrollParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (screenHeight * 0.45f).toInt()
         )
-        scrollParams.bottomMargin = dp(90)
-        container.addView(scrollView, scrollParams)
+        card.addView(scrollView, scrollParams)
 
         val buttonsRow = LinearLayout(this)
         buttonsRow.orientation = LinearLayout.HORIZONTAL
+        buttonsRow.gravity = Gravity.END
+        val rowLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        rowLp.topMargin = dp(16)
+        buttonsRow.layoutParams = rowLp
 
-        val copyButton = createIconButton("\uD83D\uDCCB Скопировать") {
+        val copyButton = createIconButton("Скопировать") {
             val clipboard = getSystemService(ClipboardManager::class.java)
             clipboard.setPrimaryClip(ClipData.newPlainText("text", text))
             showNotification("Скопировано", "Текст в буфере обмена")
         }
-        val closeButton = createIconButton("\u2715 Закрыть") {
+        val closeButton = createIconButton("Закрыть") {
             windowManager?.removeView(container)
         }
         buttonsRow.addView(copyButton)
         buttonsRow.addView(closeButton)
+        card.addView(buttonsRow)
 
-        val rowParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
+        val cardParams = FrameLayout.LayoutParams(
+            (screenWidth * 0.8f).toInt(),
             FrameLayout.LayoutParams.WRAP_CONTENT
         )
-        rowParams.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        rowParams.bottomMargin = dp(30)
-        container.addView(buttonsRow, rowParams)
+        cardParams.gravity = Gravity.CENTER
+        container.addView(card, cardParams)
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -519,28 +522,6 @@ class MyAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun saveToGallery(bitmap: Bitmap) {
-        try {
-            val filename = "ScreenSelect_" + System.currentTimeMillis() + ".png"
-            val values = ContentValues()
-            values.put(MediaStore.Images.Media.DISPLAY_NAME, filename)
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ScreenSelect")
-
-            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-            if (uri != null) {
-                contentResolver.openOutputStream(uri)?.use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                }
-                showNotification("Сохранено", "Скриншот сохранён в галерею")
-            } else {
-                showNotification("Ошибка", "Не удалось сохранить")
-            }
-        } catch (e: Exception) {
-            showNotification("Ошибка сохранения", e.message ?: "неизвестно")
-        }
-    }
-
     private fun showZoomScreen(bitmap: Bitmap) {
         val container = FrameLayout(this)
         container.setBackgroundColor(Color.parseColor("#CC000000"))
@@ -554,7 +535,7 @@ class MyAccessibilityService : AccessibilityService() {
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         )
 
-        val closeButton = createIconButton("\u2715 Закрыть") {
+        val closeButton = createIconButton("Закрыть") {
             windowManager?.removeView(container)
         }
 
