@@ -132,17 +132,19 @@ class MyAccessibilityService : AccessibilityService() {
     private fun createIconButton(emoji: String, onClick: () -> Unit): Button {
         val button = Button(this)
         button.text = emoji
-        button.textSize = 18f
-        button.setTextColor(Color.WHITE)
-        button.isAllCaps = false
+        button.textSize = 12f
+        button.setTextColor(Color.parseColor("#00E5FF"))
+        button.isAllCaps = true
+        button.letterSpacing = 0.05f
         button.minWidth = 0
         button.minHeight = 0
-        button.setPadding(dp(14), dp(10), dp(14), dp(10))
+        button.setPadding(dp(16), dp(10), dp(16), dp(10))
 
         val bg = GradientDrawable()
         bg.shape = GradientDrawable.RECTANGLE
-        bg.cornerRadius = dp(14).toFloat()
-        bg.setColor(Color.parseColor("#E6222222"))
+        bg.cornerRadius = dp(4).toFloat()
+        bg.setColor(Color.parseColor("#E60A0A0F"))
+        bg.setStroke(dp(1), Color.parseColor("#00E5FF"))
         button.background = bg
         button.elevation = dp(4).toFloat()
 
@@ -220,8 +222,9 @@ class MyAccessibilityService : AccessibilityService() {
 
         val toolbarBg = GradientDrawable()
         toolbarBg.shape = GradientDrawable.RECTANGLE
-        toolbarBg.cornerRadius = dp(18).toFloat()
-        toolbarBg.setColor(Color.parseColor("#33000000"))
+        toolbarBg.cornerRadius = dp(6).toFloat()
+        toolbarBg.setColor(Color.parseColor("#DD08080C"))
+        toolbarBg.setStroke(dp(1), Color.parseColor("#4D00E5FF"))
         toolbar.background = toolbarBg
         toolbar.setPadding(dp(6), dp(6), dp(6), dp(6))
 
@@ -469,8 +472,9 @@ class MyAccessibilityService : AccessibilityService() {
 
         val cardBg = GradientDrawable()
         cardBg.shape = GradientDrawable.RECTANGLE
-        cardBg.cornerRadius = dp(18).toFloat()
-        cardBg.setColor(Color.parseColor("#F0222222"))
+        cardBg.cornerRadius = dp(8).toFloat()
+        cardBg.setColor(Color.parseColor("#F00C0C11"))
+        cardBg.setStroke(dp(1), Color.parseColor("#8000E5FF"))
         card.background = cardBg
         card.setPadding(dp(20), dp(20), dp(20), dp(16))
 
@@ -553,9 +557,35 @@ class MyAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun addCorner(root: FrameLayout, isTop: Boolean, isLeft: Boolean, color: Int) {
+        val len = dp(26)
+        val thickness = dp(3)
+        val margin = dp(24)
+
+        val hLine = View(this)
+        hLine.setBackgroundColor(color)
+        val hParams = FrameLayout.LayoutParams(len, thickness)
+        hParams.gravity = (if (isTop) Gravity.TOP else Gravity.BOTTOM) or (if (isLeft) Gravity.START else Gravity.END)
+        hParams.topMargin = margin
+        hParams.bottomMargin = margin
+        hParams.leftMargin = margin
+        hParams.rightMargin = margin
+        root.addView(hLine, hParams)
+
+        val vLine = View(this)
+        vLine.setBackgroundColor(color)
+        val vParams = FrameLayout.LayoutParams(thickness, len)
+        vParams.gravity = (if (isTop) Gravity.TOP else Gravity.BOTTOM) or (if (isLeft) Gravity.START else Gravity.END)
+        vParams.topMargin = margin
+        vParams.bottomMargin = margin
+        vParams.leftMargin = margin
+        vParams.rightMargin = margin
+        root.addView(vLine, vParams)
+    }
+
     private fun showZoomScreen(bitmap: Bitmap) {
         val container = FrameLayout(this)
-        container.setBackgroundColor(Color.parseColor("#CC000000"))
+        container.setBackgroundColor(Color.parseColor("#F008080C"))
 
         val imageView = ImageView(this)
         imageView.setImageBitmap(bitmap)
@@ -566,6 +596,12 @@ class MyAccessibilityService : AccessibilityService() {
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         )
 
+        val cyan = Color.parseColor("#00E5FF")
+        addCorner(container, true, true, cyan)
+        addCorner(container, true, false, cyan)
+        addCorner(container, false, true, cyan)
+        addCorner(container, false, false, cyan)
+
         val closeButton = createIconButton("Закрыть") {
             windowManager?.removeView(container)
         }
@@ -574,9 +610,8 @@ class MyAccessibilityService : AccessibilityService() {
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
         )
-        btnParams.gravity = Gravity.TOP or Gravity.END
-        btnParams.topMargin = 60
-        btnParams.rightMargin = 40
+        btnParams.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        btnParams.bottomMargin = dp(40)
         container.addView(closeButton, btnParams)
 
         val params = WindowManager.LayoutParams(
