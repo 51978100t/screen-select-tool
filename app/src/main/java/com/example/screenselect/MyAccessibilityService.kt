@@ -34,7 +34,7 @@ import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import com.google.mlkit.vision.text.cyrillic.CyrillicTextRecognizerOptions
 import java.io.File
 import java.io.FileOutputStream
 
@@ -231,11 +231,11 @@ class MyAccessibilityService : AccessibilityService() {
         }
 
         val textButton = createIconButton("\uD83D\uDCCB") {
-            lastRect?.let { rect -> captureCropped(rect) { bitmap -> copyTextFromBitmap(bitmap) } }
+            lastRect?.let { rect -> captureCropped(rect) { bitmap -> recognizeAndShowText(bitmap) } }
         }
 
         val translateButton = createIconButton("\uD83C\uDF10") {
-            lastRect?.let { rect -> captureCropped(rect) { bitmap -> translateAndCopy(bitmap) } }
+            lastRect?.let { rect -> captureCropped(rect) { bitmap -> translateAndShowText(bitmap) } }
         }
 
         val shareButton = createIconButton("\uD83D\uDCE4") {
@@ -327,16 +327,14 @@ class MyAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun copyTextFromBitmap(bitmap: Bitmap) {
+    private fun recognizeAndShowText(bitmap: Bitmap) {
         val image = InputImage.fromBitmap(bitmap, 0)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val recognizer = TextRecognition.getClient(CyrillicTextRecognizerOptions.Builder().build())
         recognizer.process(image)
             .addOnSuccessListener { visionText ->
                 val text = visionText.text
                 if (text.isNotEmpty()) {
-                    val clipboard = getSystemService(ClipboardManager::class.java)
-                    clipboard.setPrimaryClip(ClipData.newPlainText("OCR", text))
-                    showNotification("Текст скопирован", text.take(100))
+                    showTextResultScreen(text)
                 } else {
                     showNotification("Текст не найден", "На выделенной области нет текста")
                 }
@@ -346,9 +344,9 @@ class MyAccessibilityService : AccessibilityService() {
             }
     }
 
-    private fun translateAndCopy(bitmap: Bitmap) {
+    private fun translateAndShowText(bitmap: Bitmap) {
         val image = InputImage.fromBitmap(bitmap, 0)
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val recognizer = TextRecognition.getClient(CyrillicTextRecognizerOptions.Builder().build())
         recognizer.process(image)
             .addOnSuccessListener { visionText ->
                 val text = visionText.text
@@ -360,6 +358,11 @@ class MyAccessibilityService : AccessibilityService() {
                 val languageIdentifier = LanguageIdentification.getClient()
                 languageIdentifier.identifyLanguage(text)
                     .addOnSuccessListener { languageCode ->
+                        if (languageCode == "ru") {
+                            showTextResultScreen(text)
+                            return@addOnSuccessListener
+                        }
+
                         val sourceLang = if (languageCode == "und") {
                             TranslateLanguage.ENGLISH
                         } else {
@@ -377,9 +380,7 @@ class MyAccessibilityService : AccessibilityService() {
                             .addOnSuccessListener {
                                 translator.translate(text)
                                     .addOnSuccessListener { translated ->
-                                        val clipboard = getSystemService(ClipboardManager::class.java)
-                                        clipboard.setPrimaryClip(ClipData.newPlainText("Translation", translated))
-                                        showNotification("Перевод скопирован", translated.take(100))
+                                        showTextResultScreen(translated)
                                     }
                                     .addOnFailureListener { e ->
                                         showNotification("Ошибка перевода", e.message ?: "неизвестно")
@@ -396,6 +397,58 @@ class MyAccessibilityService : AccessibilityService() {
             .addOnFailureListener { e ->
                 showNotification("Ошибка распознавания", e.message ?: "неизвестная ошибка")
             }
+    }
+
+    private fun showTextResultScreen(text: String) {
+        val container = FrameLayout(this)
+        container.setBackgroundColor(Color.parseColor("#EE000000"))
+
+        val scrollView = android.widget.ScrollView(this)
+        val textView = android.widget.TextView(this)
+        textView.text = text
+        textView.setTextColor(Color.WHITE)
+        textView.textSize = 18f
+        textView.setPadding(dp(24), dp(24), dp(24), dp(24))
+        scrollView.addView(textView)
+
+        val scrollParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
+        scrollParams.bottomMargin = dp(90)
+        container.addView(scrollView, scrollParams)
+
+        val buttonsRow = LinearLayout(this)
+        buttonsRow.orientation = LinearLayout.HORIZONTAL
+
+        val copyButton = createIconButton("\uD83D\uDCCB Скопировать") {
+            val clipboard = getSystemService(ClipboardManager::class.java)
+            clipboard.setPrimaryClip(ClipData.newPlainText("text", text))
+            showNotification("Скопировано", "Текст в буфере обмена")
+        }
+        val closeButton = createIconButton("\u2715 Закрыть") {
+            windowManager?.removeView(container)
+        }
+        buttonsRow.addView(copyButton)
+        buttonsRow.addView(closeButton)
+
+        val rowParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        rowParams.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        rowParams.bottomMargin = dp(30)
+        container.addView(buttonsRow, rowParams)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+
+        windowManager?.addView(container, params)
     }
 
     private fun shareScreenshot(bitmap: Bitmap) {

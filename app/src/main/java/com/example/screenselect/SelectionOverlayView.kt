@@ -21,7 +21,7 @@ class SelectionOverlayView(
     private var hasSelection = false
 
     private val selectionPaint = Paint().apply {
-        color = Color.parseColor("#FF4081")
+        color = Color.parseColor("#FFD600")
         style = Paint.Style.STROKE
         strokeWidth = 6f
     }
