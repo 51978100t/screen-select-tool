@@ -14,6 +14,11 @@ class MyAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        Toast.makeText(this, "Сервис запущен и подключен", Toast.LENGTH_SHORT).show()
+    }
+
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_HOME) {
             when (event.action) {
@@ -21,15 +26,11 @@ class MyAccessibilityService : AccessibilityService() {
                     if (event.repeatCount == 0) {
                         homeDownTime = System.currentTimeMillis()
                     }
-                    Log.d("ScreenSelect", "HOME DOWN")
+                    Toast.makeText(this, "HOME DOWN поймано", Toast.LENGTH_SHORT).show()
                 }
                 KeyEvent.ACTION_UP -> {
                     val duration = System.currentTimeMillis() - homeDownTime
-                    Log.d("ScreenSelect", "HOME UP, duration=$duration ms")
-                    if (duration > 500) {
-                        Log.d("ScreenSelect", "LONG PRESS DETECTED!")
-                        Toast.makeText(this, "Долгое нажатие Home поймано!", Toast.LENGTH_SHORT).show()
-                    }
+                    Toast.makeText(this, "HOME UP, длительность=" + duration + "мс", Toast.LENGTH_SHORT).show()
                 }
             }
         }
