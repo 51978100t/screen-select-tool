@@ -3,5 +3,6 @@
     android:accessibilityEventTypes="typeAllMask"
     android:accessibilityFlags="flagRequestFilterKeyEvents"
     android:canRequestFilterKeyEvents="true"
+    android:canTakeScreenshot="true"
     android:description="@string/service_description"
     android:notificationTimeout="100" />
