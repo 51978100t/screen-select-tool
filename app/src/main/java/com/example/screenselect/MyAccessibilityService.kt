@@ -4,11 +4,19 @@ import android.accessibilityservice.AccessibilityService
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
+import androidx.core.content.FileProvider
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.ContentValues
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
@@ -19,6 +27,16 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.nl.languageid.LanguageIdentification
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.TranslatorOptions
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import java.io.File
+import java.io.FileOutputStream
 
 class MyAccessibilityService : AccessibilityService() {
 
@@ -82,6 +100,91 @@ class MyAccessibilityService : AccessibilityService() {
         windowManager?.addView(strip, params)
     }
 
+    private fun dp(value: Int): Int {
+        val density = resources.displayMetrics.density
+        return (value * density).toInt()
+    }
+
+    private fun createIconButton(emoji: String, onClick: () -> Unit): Button {
+        val button = Button(this)
+        button.text = emoji
+        button.textSize = 18f
+        button.setTextColor(Color.WHITE)
+        button.isAllCaps = false
+        button.minWidth = 0
+        button.minHeight = 0
+        button.setPadding(dp(14), dp(10), dp(14), dp(10))
+
+        val bg = GradientDrawable()
+        bg.shape = GradientDrawable.RECTANGLE
+        bg.cornerRadius = dp(14).toFloat()
+        bg.setColor(Color.parseColor("#E6222222"))
+        button.background = bg
+        button.elevation = dp(4).toFloat()
+
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(dp(4), dp(4), dp(4), dp(4))
+        button.layoutParams = lp
+
+        button.setOnClickListener { onClick() }
+        return button
+    }
+
+    private fun getScreenSize(): Pair<Int, Int> {
+        val bounds = windowManager?.currentWindowMetrics?.bounds
+        return if (bounds != null) {
+            Pair(bounds.width(), bounds.height())
+        } else {
+            Pair(1080, 1920)
+        }
+    }
+
+    private fun positionToolbar(toolbar: View, rect: Rect) {
+        toolbar.post {
+            val (screenWidth, screenHeight) = getScreenSize()
+            val toolbarWidth = toolbar.width
+            val toolbarHeight = toolbar.height
+            val gap = dp(16)
+
+            val spaceRight = screenWidth - rect.right
+            val spaceLeft = rect.left
+            val spaceBelow = screenHeight - rect.bottom
+            val spaceAbove = rect.top
+
+            var left: Int
+            var top: Int
+
+            if (spaceRight >= toolbarWidth + gap) {
+                left = rect.right + gap
+                top = (rect.top + rect.bottom) / 2 - toolbarHeight / 2
+            } else if (spaceLeft >= toolbarWidth + gap) {
+                left = rect.left - toolbarWidth - gap
+                top = (rect.top + rect.bottom) / 2 - toolbarHeight / 2
+            } else if (spaceBelow >= toolbarHeight + gap) {
+                left = rect.left
+                top = rect.bottom + gap
+            } else if (spaceAbove >= toolbarHeight + gap) {
+                left = rect.left
+                top = rect.top - toolbarHeight - gap
+            } else {
+                left = rect.left
+                top = rect.bottom + gap
+            }
+
+            left = left.coerceIn(0, (screenWidth - toolbarWidth).coerceAtLeast(0))
+            top = top.coerceIn(0, (screenHeight - toolbarHeight).coerceAtLeast(0))
+
+            val lp = toolbar.layoutParams as FrameLayout.LayoutParams
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.leftMargin = left
+            lp.topMargin = top
+            toolbar.layoutParams = lp
+        }
+    }
+
     private fun openSelectionScreen() {
         if (selectionContainer != null) return
 
@@ -91,6 +194,13 @@ class MyAccessibilityService : AccessibilityService() {
         toolbar.orientation = LinearLayout.HORIZONTAL
         toolbar.visibility = View.GONE
 
+        val toolbarBg = GradientDrawable()
+        toolbarBg.shape = GradientDrawable.RECTANGLE
+        toolbarBg.cornerRadius = dp(18).toFloat()
+        toolbarBg.setColor(Color.parseColor("#33000000"))
+        toolbar.background = toolbarBg
+        toolbar.setPadding(dp(6), dp(6), dp(6), dp(6))
+
         val overlay = SelectionOverlayView(this) { rect ->
             if (rect == null) {
                 toolbar.visibility = View.GONE
@@ -98,6 +208,7 @@ class MyAccessibilityService : AccessibilityService() {
             } else {
                 toolbar.visibility = View.VISIBLE
                 lastRect = rect
+                positionToolbar(toolbar, rect)
             }
         }
 
@@ -106,39 +217,48 @@ class MyAccessibilityService : AccessibilityService() {
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         )
 
-        val closeButton = Button(this)
-        closeButton.text = "\u2715 Закрыть"
-        closeButton.setOnClickListener {
+        val closeButton = createIconButton("\u2715") {
             closeSelectionScreen()
         }
 
-        val redoButton = Button(this)
-        redoButton.text = "\u27F3 Заново"
-        redoButton.setOnClickListener {
+        val redoButton = createIconButton("\u27F3") {
             overlay.clearSelection()
             toolbar.visibility = View.GONE
         }
 
-        val zoomButton = Button(this)
-        zoomButton.text = "\uD83D\uDD0D Показать"
-        zoomButton.setOnClickListener {
-            val rect = lastRect
-            if (rect != null) {
-                captureAndShow(rect)
-            }
+        val zoomButton = createIconButton("\uD83D\uDD0D") {
+            lastRect?.let { rect -> captureCropped(rect) { bitmap -> showZoomScreen(bitmap) } }
+        }
+
+        val textButton = createIconButton("\uD83D\uDCCB") {
+            lastRect?.let { rect -> captureCropped(rect) { bitmap -> copyTextFromBitmap(bitmap) } }
+        }
+
+        val translateButton = createIconButton("\uD83C\uDF10") {
+            lastRect?.let { rect -> captureCropped(rect) { bitmap -> translateAndCopy(bitmap) } }
+        }
+
+        val shareButton = createIconButton("\uD83D\uDCE4") {
+            lastRect?.let { rect -> captureCropped(rect) { bitmap -> shareScreenshot(bitmap) } }
+        }
+
+        val saveButton = createIconButton("\uD83D\uDCBE") {
+            lastRect?.let { rect -> captureCropped(rect) { bitmap -> saveToGallery(bitmap) } }
         }
 
         toolbar.addView(closeButton)
         toolbar.addView(redoButton)
         toolbar.addView(zoomButton)
+        toolbar.addView(textButton)
+        toolbar.addView(translateButton)
+        toolbar.addView(shareButton)
+        toolbar.addView(saveButton)
 
         val toolbarParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
         )
-        toolbarParams.gravity = Gravity.TOP or Gravity.END
-        toolbarParams.topMargin = 60
-        toolbarParams.rightMargin = 40
+        toolbarParams.gravity = Gravity.TOP or Gravity.START
         container.addView(toolbar, toolbarParams)
 
         selectionContainer = container
@@ -162,7 +282,7 @@ class MyAccessibilityService : AccessibilityService() {
         lastRect = null
     }
 
-    private fun captureAndShow(rect: Rect) {
+    private fun captureCropped(rect: Rect, onReady: (Bitmap) -> Unit) {
         closeSelectionScreen()
 
         takeScreenshot(
@@ -197,7 +317,7 @@ class MyAccessibilityService : AccessibilityService() {
                     }
 
                     val cropped = Bitmap.createBitmap(softwareBitmap, safeLeft, safeTop, w, h)
-                    showZoomScreen(cropped)
+                    onReady(cropped)
                 }
 
                 override fun onFailure(errorCode: Int) {
@@ -205,6 +325,124 @@ class MyAccessibilityService : AccessibilityService() {
                 }
             }
         )
+    }
+
+    private fun copyTextFromBitmap(bitmap: Bitmap) {
+        val image = InputImage.fromBitmap(bitmap, 0)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        recognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                val text = visionText.text
+                if (text.isNotEmpty()) {
+                    val clipboard = getSystemService(ClipboardManager::class.java)
+                    clipboard.setPrimaryClip(ClipData.newPlainText("OCR", text))
+                    showNotification("Текст скопирован", text.take(100))
+                } else {
+                    showNotification("Текст не найден", "На выделенной области нет текста")
+                }
+            }
+            .addOnFailureListener { e ->
+                showNotification("Ошибка распознавания", e.message ?: "неизвестная ошибка")
+            }
+    }
+
+    private fun translateAndCopy(bitmap: Bitmap) {
+        val image = InputImage.fromBitmap(bitmap, 0)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        recognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                val text = visionText.text
+                if (text.isEmpty()) {
+                    showNotification("Текст не найден", "На выделенной области нет текста")
+                    return@addOnSuccessListener
+                }
+
+                val languageIdentifier = LanguageIdentification.getClient()
+                languageIdentifier.identifyLanguage(text)
+                    .addOnSuccessListener { languageCode ->
+                        val sourceLang = if (languageCode == "und") {
+                            TranslateLanguage.ENGLISH
+                        } else {
+                            TranslateLanguage.fromLanguageTag(languageCode) ?: TranslateLanguage.ENGLISH
+                        }
+
+                        val options = TranslatorOptions.Builder()
+                            .setSourceLanguage(sourceLang)
+                            .setTargetLanguage(TranslateLanguage.RUSSIAN)
+                            .build()
+                        val translator = Translation.getClient(options)
+                        val conditions = DownloadConditions.Builder().build()
+
+                        translator.downloadModelIfNeeded(conditions)
+                            .addOnSuccessListener {
+                                translator.translate(text)
+                                    .addOnSuccessListener { translated ->
+                                        val clipboard = getSystemService(ClipboardManager::class.java)
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Translation", translated))
+                                        showNotification("Перевод скопирован", translated.take(100))
+                                    }
+                                    .addOnFailureListener { e ->
+                                        showNotification("Ошибка перевода", e.message ?: "неизвестно")
+                                    }
+                            }
+                            .addOnFailureListener { e ->
+                                showNotification("Ошибка загрузки модели", e.message ?: "нужен интернет")
+                            }
+                    }
+                    .addOnFailureListener { e ->
+                        showNotification("Ошибка определения языка", e.message ?: "неизвестно")
+                    }
+            }
+            .addOnFailureListener { e ->
+                showNotification("Ошибка распознавания", e.message ?: "неизвестная ошибка")
+            }
+    }
+
+    private fun shareScreenshot(bitmap: Bitmap) {
+        try {
+            val cachePath = File(cacheDir, "images")
+            cachePath.mkdirs()
+            val file = File(cachePath, "shared_image.png")
+            val stream = FileOutputStream(file)
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            stream.close()
+
+            val uri = FileProvider.getUriForFile(this, packageName + ".fileprovider", file)
+
+            val intent = Intent(Intent.ACTION_SEND)
+            intent.type = "image/png"
+            intent.putExtra(Intent.EXTRA_STREAM, uri)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+            val chooser = Intent.createChooser(intent, "Поделиться")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(chooser)
+        } catch (e: Exception) {
+            showNotification("Ошибка", e.message ?: "не удалось поделиться")
+        }
+    }
+
+    private fun saveToGallery(bitmap: Bitmap) {
+        try {
+            val filename = "ScreenSelect_" + System.currentTimeMillis() + ".png"
+            val values = ContentValues()
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            values.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ScreenSelect")
+
+            val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            if (uri != null) {
+                contentResolver.openOutputStream(uri)?.use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                }
+                showNotification("Сохранено", "Скриншот сохранён в галерею")
+            } else {
+                showNotification("Ошибка", "Не удалось сохранить")
+            }
+        } catch (e: Exception) {
+            showNotification("Ошибка сохранения", e.message ?: "неизвестно")
+        }
     }
 
     private fun showZoomScreen(bitmap: Bitmap) {
@@ -220,9 +458,7 @@ class MyAccessibilityService : AccessibilityService() {
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         )
 
-        val closeButton = Button(this)
-        closeButton.text = "\u2715 Закрыть"
-        closeButton.setOnClickListener {
+        val closeButton = createIconButton("\u2715 Закрыть") {
             windowManager?.removeView(container)
         }
 
