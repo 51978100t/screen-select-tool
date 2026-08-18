@@ -16,6 +16,8 @@ import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.view.Display
 import android.view.Gravity
@@ -32,11 +34,11 @@ import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.cyrillic.CyrillicTextRecognizerOptions
+import com.googlecode.tesseract.android.TessBaseAPI
 import java.io.File
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 
 class MyAccessibilityService : AccessibilityService() {
 
@@ -327,76 +329,117 @@ class MyAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun recognizeAndShowText(bitmap: Bitmap) {
-        val image = InputImage.fromBitmap(bitmap, 0)
-        val recognizer = TextRecognition.getClient(CyrillicTextRecognizerOptions.Builder().build())
-        recognizer.process(image)
-            .addOnSuccessListener { visionText ->
-                val text = visionText.text
-                if (text.isNotEmpty()) {
-                    showTextResultScreen(text)
-                } else {
-                    showNotification("Текст не найден", "На выделенной области нет текста")
+    private fun ensureTessData(onReady: () -> Unit) {
+        Thread {
+            try {
+                val tessDir = File(filesDir, "tesseract")
+                val tessDataDir = File(tessDir, "tessdata")
+                if (!tessDataDir.exists()) tessDataDir.mkdirs()
+
+                val names = listOf("rus.traineddata", "eng.traineddata")
+                for (name in names) {
+                    val target = File(tessDataDir, name)
+                    if (!target.exists() || target.length() == 0L) {
+                        val url = URL("https://github.com/tesseract-ocr/tessdata_fast/raw/main/" + name)
+                        val connection = url.openConnection() as HttpURLConnection
+                        connection.connectTimeout = 15000
+                        connection.readTimeout = 15000
+                        connection.connect()
+                        connection.inputStream.use { input ->
+                            FileOutputStream(target).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                }
+                Handler(Looper.getMainLooper()).post { onReady() }
+            } catch (e: Exception) {
+                Handler(Looper.getMainLooper()).post {
+                    showNotification("Ошибка загрузки языковых данных", e.message ?: "проверь интернет")
                 }
             }
-            .addOnFailureListener { e ->
-                showNotification("Ошибка распознавания", e.message ?: "неизвестная ошибка")
+        }.start()
+    }
+
+    private fun runOcr(bitmap: Bitmap, onResult: (String) -> Unit) {
+        showNotification("Распознавание", "Обрабатываю область...")
+        ensureTessData {
+            Thread {
+                val dataPath = File(filesDir, "tesseract").absolutePath
+                val tess = TessBaseAPI()
+                val ok = tess.init(dataPath, "rus+eng")
+                if (!ok) {
+                    tess.recycle()
+                    Handler(Looper.getMainLooper()).post {
+                        showNotification("Ошибка", "Не удалось запустить распознавание")
+                    }
+                    return@Thread
+                }
+                tess.setImage(bitmap)
+                val text = tess.utF8Text ?: ""
+                tess.recycle()
+                Handler(Looper.getMainLooper()).post { onResult(text) }
+            }.start()
+        }
+    }
+
+    private fun recognizeAndShowText(bitmap: Bitmap) {
+        runOcr(bitmap) { text ->
+            if (text.isNotBlank()) {
+                showTextResultScreen(text.trim())
+            } else {
+                showNotification("Текст не найден", "На выделенной области нет текста")
             }
+        }
     }
 
     private fun translateAndShowText(bitmap: Bitmap) {
-        val image = InputImage.fromBitmap(bitmap, 0)
-        val recognizer = TextRecognition.getClient(CyrillicTextRecognizerOptions.Builder().build())
-        recognizer.process(image)
-            .addOnSuccessListener { visionText ->
-                val text = visionText.text
-                if (text.isEmpty()) {
-                    showNotification("Текст не найден", "На выделенной области нет текста")
-                    return@addOnSuccessListener
+        runOcr(bitmap) { rawText ->
+            val text = rawText.trim()
+            if (text.isEmpty()) {
+                showNotification("Текст не найден", "На выделенной области нет текста")
+                return@runOcr
+            }
+
+            val languageIdentifier = LanguageIdentification.getClient()
+            languageIdentifier.identifyLanguage(text)
+                .addOnSuccessListener { languageCode ->
+                    if (languageCode == "ru") {
+                        showTextResultScreen(text)
+                        return@addOnSuccessListener
+                    }
+
+                    val sourceLang = if (languageCode == "und") {
+                        TranslateLanguage.ENGLISH
+                    } else {
+                        TranslateLanguage.fromLanguageTag(languageCode) ?: TranslateLanguage.ENGLISH
+                    }
+
+                    val options = TranslatorOptions.Builder()
+                        .setSourceLanguage(sourceLang)
+                        .setTargetLanguage(TranslateLanguage.RUSSIAN)
+                        .build()
+                    val translator = Translation.getClient(options)
+                    val conditions = DownloadConditions.Builder().build()
+
+                    translator.downloadModelIfNeeded(conditions)
+                        .addOnSuccessListener {
+                            translator.translate(text)
+                                .addOnSuccessListener { translated ->
+                                    showTextResultScreen(translated)
+                                }
+                                .addOnFailureListener { e ->
+                                    showNotification("Ошибка перевода", e.message ?: "неизвестно")
+                                }
+                        }
+                        .addOnFailureListener { e ->
+                            showNotification("Ошибка загрузки модели", e.message ?: "нужен интернет")
+                        }
                 }
-
-                val languageIdentifier = LanguageIdentification.getClient()
-                languageIdentifier.identifyLanguage(text)
-                    .addOnSuccessListener { languageCode ->
-                        if (languageCode == "ru") {
-                            showTextResultScreen(text)
-                            return@addOnSuccessListener
-                        }
-
-                        val sourceLang = if (languageCode == "und") {
-                            TranslateLanguage.ENGLISH
-                        } else {
-                            TranslateLanguage.fromLanguageTag(languageCode) ?: TranslateLanguage.ENGLISH
-                        }
-
-                        val options = TranslatorOptions.Builder()
-                            .setSourceLanguage(sourceLang)
-                            .setTargetLanguage(TranslateLanguage.RUSSIAN)
-                            .build()
-                        val translator = Translation.getClient(options)
-                        val conditions = DownloadConditions.Builder().build()
-
-                        translator.downloadModelIfNeeded(conditions)
-                            .addOnSuccessListener {
-                                translator.translate(text)
-                                    .addOnSuccessListener { translated ->
-                                        showTextResultScreen(translated)
-                                    }
-                                    .addOnFailureListener { e ->
-                                        showNotification("Ошибка перевода", e.message ?: "неизвестно")
-                                    }
-                            }
-                            .addOnFailureListener { e ->
-                                showNotification("Ошибка загрузки модели", e.message ?: "нужен интернет")
-                            }
-                    }
-                    .addOnFailureListener { e ->
-                        showNotification("Ошибка определения языка", e.message ?: "неизвестно")
-                    }
-            }
-            .addOnFailureListener { e ->
-                showNotification("Ошибка распознавания", e.message ?: "неизвестная ошибка")
-            }
+                .addOnFailureListener { e ->
+                    showNotification("Ошибка определения языка", e.message ?: "неизвестно")
+                }
+        }
     }
 
     private fun showTextResultScreen(text: String) {
