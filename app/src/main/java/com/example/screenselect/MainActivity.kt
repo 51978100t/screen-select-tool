@@ -105,7 +105,7 @@ class MainActivity : Activity() {
         val expected = ComponentName(this, MyAccessibilityService::class.java).flattenToString()
         val enabledServices = Settings.Secure.getString(
             contentResolver,
-            Settings.Secure.ACCESSIBILITY_ENABLED_SERVICES
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
 
         val splitter = TextUtils.SimpleStringSplitter(':')
