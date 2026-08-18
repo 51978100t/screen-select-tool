@@ -419,7 +419,7 @@ class MyAccessibilityService : AccessibilityService() {
             languageIdentifier.identifyLanguage(text)
                 .addOnSuccessListener { languageCode ->
                     if (languageCode == "ru") {
-                        showTextResultScreen(text)
+                        showRussianTargetChoice(text)
                         return@addOnSuccessListener
                     }
 
@@ -429,31 +429,119 @@ class MyAccessibilityService : AccessibilityService() {
                         TranslateLanguage.fromLanguageTag(languageCode) ?: TranslateLanguage.ENGLISH
                     }
 
-                    val options = TranslatorOptions.Builder()
-                        .setSourceLanguage(sourceLang)
-                        .setTargetLanguage(TranslateLanguage.RUSSIAN)
-                        .build()
-                    val translator = Translation.getClient(options)
-                    val conditions = DownloadConditions.Builder().build()
-
-                    translator.downloadModelIfNeeded(conditions)
-                        .addOnSuccessListener {
-                            translator.translate(text)
-                                .addOnSuccessListener { translated ->
-                                    showTextResultScreen(translated)
-                                }
-                                .addOnFailureListener { e ->
-                                    showNotification("Ошибка перевода", e.message ?: "неизвестно")
-                                }
-                        }
-                        .addOnFailureListener { e ->
-                            showNotification("Ошибка загрузки модели", e.message ?: "нужен интернет")
-                        }
+                    translateText(text, sourceLang, TranslateLanguage.RUSSIAN) { translated ->
+                        showTextResultScreen(translated)
+                    }
                 }
                 .addOnFailureListener { e ->
                     showNotification("Ошибка определения языка", e.message ?: "неизвестно")
                 }
         }
+    }
+
+    private fun translateText(text: String, sourceLang: String, targetLang: String, onResult: (String) -> Unit) {
+        val options = TranslatorOptions.Builder()
+            .setSourceLanguage(sourceLang)
+            .setTargetLanguage(targetLang)
+            .build()
+        val translator = Translation.getClient(options)
+        val conditions = DownloadConditions.Builder().build()
+
+        translator.downloadModelIfNeeded(conditions)
+            .addOnSuccessListener {
+                translator.translate(text)
+                    .addOnSuccessListener { translated -> onResult(translated) }
+                    .addOnFailureListener { e ->
+                        showNotification("Ошибка перевода", e.message ?: "неизвестно")
+                    }
+            }
+            .addOnFailureListener { e ->
+                showNotification("Ошибка загрузки модели", e.message ?: "нужен интернет")
+            }
+    }
+
+    private fun showRussianTargetChoice(text: String) {
+        val container = FrameLayout(this)
+        container.setBackgroundColor(Color.TRANSPARENT)
+        container.isClickable = true
+        container.setOnClickListener {
+            windowManager?.removeView(container)
+        }
+
+        val (screenWidth, screenHeight) = getScreenSize()
+
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.isClickable = true
+
+        val cardBg = GradientDrawable()
+        cardBg.shape = GradientDrawable.RECTANGLE
+        cardBg.cornerRadius = dp(8).toFloat()
+        cardBg.setColor(Color.parseColor("#F00C0C11"))
+        cardBg.setStroke(dp(1), Color.parseColor("#8000E5FF"))
+        card.background = cardBg
+        card.setPadding(dp(20), dp(20), dp(20), dp(16))
+
+        val scrollView = android.widget.ScrollView(this)
+        val textView = android.widget.TextView(this)
+        textView.text = text
+        textView.setTextColor(Color.WHITE)
+        textView.textSize = 17f
+        textView.setTextIsSelectable(true)
+        scrollView.addView(textView)
+
+        val scrollParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            (screenHeight * 0.4f).toInt()
+        )
+        card.addView(scrollView, scrollParams)
+
+        val buttonsRow = LinearLayout(this)
+        buttonsRow.orientation = LinearLayout.HORIZONTAL
+        buttonsRow.gravity = Gravity.END
+        val rowLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        rowLp.topMargin = dp(16)
+        buttonsRow.layoutParams = rowLp
+
+        val enButton = createIconButton("English") {
+            windowManager?.removeView(container)
+            translateText(text, TranslateLanguage.RUSSIAN, TranslateLanguage.ENGLISH) { translated ->
+                showTextResultScreen(translated)
+            }
+        }
+        val estButton = createIconButton("Eesti") {
+            windowManager?.removeView(container)
+            translateText(text, TranslateLanguage.RUSSIAN, "et") { translated ->
+                showTextResultScreen(translated)
+            }
+        }
+        val closeButton = createIconButton("Закрыть") {
+            windowManager?.removeView(container)
+        }
+        buttonsRow.addView(enButton)
+        buttonsRow.addView(estButton)
+        buttonsRow.addView(closeButton)
+        card.addView(buttonsRow)
+
+        val cardParams = FrameLayout.LayoutParams(
+            (screenWidth * 0.8f).toInt(),
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        cardParams.gravity = Gravity.CENTER
+        container.addView(card, cardParams)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+
+        windowManager?.addView(container, params)
     }
 
     private fun showTextResultScreen(text: String) {
