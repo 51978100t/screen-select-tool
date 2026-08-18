@@ -86,14 +86,17 @@ class MyAccessibilityService : AccessibilityService() {
         val strip = View(this)
         stripView = strip
 
+        val (screenWidth, _) = getScreenSize()
+        val stripWidth = (screenWidth * 0.3f).toInt()
+
         val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
+            stripWidth,
             60,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         )
-        params.gravity = Gravity.BOTTOM
+        params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         params.y = getNavBarHeight()
 
         strip.setOnTouchListener { _, event ->
