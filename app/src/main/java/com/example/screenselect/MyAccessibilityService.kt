@@ -347,7 +347,7 @@ class MyAccessibilityService : AccessibilityService() {
                 val tessDataDir = File(tessDir, "tessdata")
                 if (!tessDataDir.exists()) tessDataDir.mkdirs()
 
-                val names = listOf("rus.traineddata", "eng.traineddata")
+                val names = listOf("rus.traineddata", "eng.traineddata", "est.traineddata")
                 for (name in names) {
                     val target = File(tessDataDir, name)
                     if (!target.exists() || target.length() == 0L) {
@@ -378,7 +378,7 @@ class MyAccessibilityService : AccessibilityService() {
             Thread {
                 val dataPath = File(filesDir, "tesseract").absolutePath
                 val tess = TessBaseAPI()
-                val ok = tess.init(dataPath, "rus+eng")
+                val ok = tess.init(dataPath, "rus+eng+est")
                 if (!ok) {
                     tess.recycle()
                     Handler(Looper.getMainLooper()).post {
