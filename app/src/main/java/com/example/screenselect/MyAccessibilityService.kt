@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import androidx.core.app.NotificationCompat
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
 import android.view.Gravity
 import android.view.MotionEvent
@@ -16,6 +17,7 @@ class MyAccessibilityService : AccessibilityService() {
 
     private val channelId = "screenselect_channel"
     private var windowManager: WindowManager? = null
+    private var selectionView: View? = null
 
     private var startY = 0f
     private var tracking = false
@@ -56,7 +58,7 @@ class MyAccessibilityService : AccessibilityService() {
                         val delta = startY - event.rawY
                         if (delta > 100) {
                             tracking = false
-                            onSwipeUpDetected()
+                            openSelectionScreen()
                         }
                     }
                     true
@@ -72,8 +74,38 @@ class MyAccessibilityService : AccessibilityService() {
         windowManager?.addView(strip, params)
     }
 
-    private fun onSwipeUpDetected() {
-        showNotification("Свайп вверх поймал!", "Ловушка сработала")
+    private fun openSelectionScreen() {
+        if (selectionView != null) return
+
+        val view = SelectionOverlayView(this) { rect ->
+            closeSelectionScreen()
+            onAreaSelected(rect)
+        }
+        selectionView = view
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+
+        windowManager?.addView(view, params)
+    }
+
+    private fun closeSelectionScreen() {
+        selectionView?.let {
+            windowManager?.removeView(it)
+        }
+        selectionView = null
+    }
+
+    private fun onAreaSelected(rect: Rect) {
+        showNotification(
+            "Область выделена",
+            "left=" + rect.left + " top=" + rect.top + " right=" + rect.right + " bottom=" + rect.bottom
+        )
     }
 
     private fun createChannel() {
