@@ -455,12 +455,17 @@ class MyAccessibilityService : AccessibilityService() {
 
     private fun showTextResultScreen(text: String) {
         val container = FrameLayout(this)
-        container.setBackgroundColor(Color.parseColor("#99000000"))
+        container.setBackgroundColor(Color.TRANSPARENT)
+        container.isClickable = true
+        container.setOnClickListener {
+            windowManager?.removeView(container)
+        }
 
         val (screenWidth, screenHeight) = getScreenSize()
 
         val card = LinearLayout(this)
         card.orientation = LinearLayout.VERTICAL
+        card.isClickable = true
 
         val cardBg = GradientDrawable()
         cardBg.shape = GradientDrawable.RECTANGLE
@@ -474,6 +479,7 @@ class MyAccessibilityService : AccessibilityService() {
         textView.text = text
         textView.setTextColor(Color.WHITE)
         textView.textSize = 17f
+        textView.setTextIsSelectable(true)
         scrollView.addView(textView)
 
         val scrollParams = LinearLayout.LayoutParams(
