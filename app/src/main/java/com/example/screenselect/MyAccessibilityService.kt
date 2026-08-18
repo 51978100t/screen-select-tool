@@ -42,6 +42,7 @@ class MyAccessibilityService : AccessibilityService() {
     private val channelId = "screenselect_channel"
     private var windowManager: WindowManager? = null
     private var selectionContainer: View? = null
+    private var stripView: View? = null
     private var lastRect: Rect? = null
 
     private var startY = 0f
@@ -50,6 +51,23 @@ class MyAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
+    override fun onDestroy() {
+        removeStripView()
+        closeSelectionScreen()
+        super.onDestroy()
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        removeStripView()
+        closeSelectionScreen()
+        return super.onUnbind(intent)
+    }
+
+    private fun removeStripView() {
+        stripView?.let { windowManager?.removeView(it) }
+        stripView = null
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         createChannel()
@@ -57,19 +75,26 @@ class MyAccessibilityService : AccessibilityService() {
         addBottomStrip()
     }
 
+    private fun getNavBarHeight(): Int {
+        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else dp(48)
+    }
+
     private fun addBottomStrip() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         val strip = View(this)
+        stripView = strip
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            80,
+            60,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         )
         params.gravity = Gravity.BOTTOM
+        params.y = getNavBarHeight()
 
         strip.setOnTouchListener { _, event ->
             when (event.action) {
