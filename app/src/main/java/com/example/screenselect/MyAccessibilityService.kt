@@ -255,6 +255,10 @@ class MyAccessibilityService : AccessibilityService() {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> showZoomScreen(bitmap) } }
         }
 
+        val markerButton = createIconButton("Маркер") {
+            lastRect?.let { rect -> captureCropped(rect) { bitmap -> showMarkerScreen(bitmap) } }
+        }
+
         val textButton = createIconButton("Текст") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> recognizeAndShowText(bitmap) } }
         }
@@ -269,6 +273,7 @@ class MyAccessibilityService : AccessibilityService() {
 
         toolbar.addView(closeButton)
         toolbar.addView(zoomButton)
+        toolbar.addView(markerButton)
         toolbar.addView(textButton)
         toolbar.addView(translateButton)
         toolbar.addView(shareButton)
@@ -719,6 +724,143 @@ class MyAccessibilityService : AccessibilityService() {
         btnParams.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         btnParams.bottomMargin = dp(40)
         container.addView(closeButton, btnParams)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+
+        windowManager?.addView(container, params)
+    }
+
+    private fun createColorSwatchButton(color: Int, onClick: () -> Unit): Button {
+        val button = Button(this)
+        button.text = ""
+        button.minWidth = dp(36)
+        button.minHeight = dp(36)
+        button.setPadding(0, 0, 0, 0)
+
+        val bg = GradientDrawable()
+        bg.shape = GradientDrawable.OVAL
+        bg.setColor(color)
+        bg.setStroke(dp(1), Color.parseColor("#66FFFFFF"))
+        button.background = bg
+        button.elevation = dp(2).toFloat()
+
+        val lp = LinearLayout.LayoutParams(dp(36), dp(36))
+        lp.setMargins(dp(4), dp(4), dp(4), dp(4))
+        button.layoutParams = lp
+
+        button.setOnClickListener { onClick() }
+        return button
+    }
+
+    private fun showMarkerScreen(bitmap: Bitmap) {
+        val container = FrameLayout(this)
+        container.setBackgroundColor(Color.parseColor("#F008080C"))
+
+        val drawView = MarkerDrawingView(this, bitmap)
+        container.addView(
+            drawView,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        )
+
+        val cyan = Color.parseColor("#00E5FF")
+        addCorner(container, true, true, cyan)
+        addCorner(container, true, false, cyan)
+        addCorner(container, false, true, cyan)
+        addCorner(container, false, false, cyan)
+
+        // верхняя панель: цвета, ластик, толщина, очистить
+        val toolsRow = LinearLayout(this)
+        toolsRow.orientation = LinearLayout.HORIZONTAL
+        toolsRow.gravity = Gravity.CENTER
+
+        val redButton = createColorSwatchButton(Color.parseColor("#FF3B30")) {
+            drawView.setColor(Color.parseColor("#FF3B30"))
+        }
+        val yellowButton = createColorSwatchButton(Color.parseColor("#FFD60A")) {
+            drawView.setColor(Color.parseColor("#FFD60A"))
+        }
+        val greenButton = createColorSwatchButton(Color.parseColor("#34C759")) {
+            drawView.setColor(Color.parseColor("#34C759"))
+        }
+        val blueButton = createColorSwatchButton(Color.parseColor("#0A84FF")) {
+            drawView.setColor(Color.parseColor("#0A84FF"))
+        }
+        val whiteButton = createColorSwatchButton(Color.WHITE) {
+            drawView.setColor(Color.WHITE)
+        }
+
+        val eraserButton = createIconButton("Ластик") {
+            drawView.setEraser(true)
+        }
+
+        val thinnerButton = createIconButton("-") {
+            val newWidth = (drawView.getStrokeWidth() - dp(2)).coerceAtLeast(dp(2).toFloat())
+            drawView.setStrokeWidth(newWidth)
+        }
+
+        val thickerButton = createIconButton("+") {
+            val newWidth = (drawView.getStrokeWidth() + dp(2)).coerceAtMost(dp(30).toFloat())
+            drawView.setStrokeWidth(newWidth)
+        }
+
+        val clearButton = createIconButton("Очистить") {
+            drawView.clearDrawing()
+        }
+
+        toolsRow.addView(redButton)
+        toolsRow.addView(yellowButton)
+        toolsRow.addView(greenButton)
+        toolsRow.addView(blueButton)
+        toolsRow.addView(whiteButton)
+        toolsRow.addView(eraserButton)
+        toolsRow.addView(thinnerButton)
+        toolsRow.addView(thickerButton)
+        toolsRow.addView(clearButton)
+
+        val toolsBg = GradientDrawable()
+        toolsBg.shape = GradientDrawable.RECTANGLE
+        toolsBg.cornerRadius = dp(6).toFloat()
+        toolsBg.setColor(Color.parseColor("#DD08080C"))
+        toolsBg.setStroke(dp(1), cyan)
+        toolsRow.background = toolsBg
+        toolsRow.setPadding(dp(6), dp(6), dp(6), dp(6))
+
+        val toolsParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        toolsParams.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        toolsParams.topMargin = dp(40)
+        container.addView(toolsRow, toolsParams)
+
+        // нижняя панель: закрыть, поделиться результатом
+        val bottomRow = LinearLayout(this)
+        bottomRow.orientation = LinearLayout.HORIZONTAL
+        bottomRow.gravity = Gravity.CENTER
+
+        val closeButton = createIconButton("Закрыть") {
+            windowManager?.removeView(container)
+        }
+        val shareButton = createIconButton("Поделиться") {
+            shareScreenshot(drawView.getResultBitmap())
+            windowManager?.removeView(container)
+        }
+        bottomRow.addView(closeButton)
+        bottomRow.addView(shareButton)
+
+        val bottomParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        bottomParams.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        bottomParams.bottomMargin = dp(40)
+        container.addView(bottomRow, bottomParams)
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
