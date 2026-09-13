@@ -805,7 +805,11 @@ class MyAccessibilityService : AccessibilityService() {
         }
 
         val eraserButton = createIconButton("Eraser") {
-            drawView.setEraser(true)
+            drawView.setEraser()
+        }
+
+        val blurButton = createIconButton("Blur") {
+            drawView.setBlur()
         }
 
         val thinnerButton = createIconButton("-") {
@@ -828,6 +832,7 @@ class MyAccessibilityService : AccessibilityService() {
         toolsRow.addView(blueButton)
         toolsRow.addView(whiteButton)
         toolsRow.addView(eraserButton)
+        toolsRow.addView(blurButton)
         toolsRow.addView(thinnerButton)
         toolsRow.addView(thickerButton)
         toolsRow.addView(clearButton)
@@ -840,13 +845,31 @@ class MyAccessibilityService : AccessibilityService() {
         toolsRow.background = toolsBg
         toolsRow.setPadding(dp(6), dp(6), dp(6), dp(6))
 
-        val toolsParams = FrameLayout.LayoutParams(
+        // кружок-превью текущего инструмента (цвет/размер маркера, сетка для ластика/blur)
+        val previewView = MarkerDrawingView.ToolPreviewView(this)
+        val previewSize = dp(40)
+        val previewParams = LinearLayout.LayoutParams(previewSize, previewSize)
+        previewParams.topMargin = dp(8)
+        previewParams.gravity = Gravity.CENTER_HORIZONTAL
+
+        drawView.onToolChanged = {
+            previewView.updateState(drawView.getToolState())
+        }
+        previewView.updateState(drawView.getToolState())
+
+        val toolsWrapper = LinearLayout(this)
+        toolsWrapper.orientation = LinearLayout.VERTICAL
+        toolsWrapper.gravity = Gravity.CENTER_HORIZONTAL
+        toolsWrapper.addView(toolsRow)
+        toolsWrapper.addView(previewView, previewParams)
+
+        val toolsWrapperParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT
         )
-        toolsParams.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-        toolsParams.topMargin = dp(40)
-        container.addView(toolsRow, toolsParams)
+        toolsWrapperParams.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        toolsWrapperParams.topMargin = dp(40)
+        container.addView(toolsWrapper, toolsWrapperParams)
 
         // нижняя панель: закрыть, поделиться результатом
         val bottomRow = LinearLayout(this)
