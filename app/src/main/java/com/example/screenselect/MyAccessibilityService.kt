@@ -745,11 +745,11 @@ class MyAccessibilityService : AccessibilityService() {
         windowManager?.addView(container, params)
     }
 
-    private fun createColorSwatchButton(color: Int, onClick: () -> Unit): Button {
+    private fun createColorSwatchButton(color: Int, sizeDp: Int = 36, onClick: () -> Unit): Button {
         val button = Button(this)
         button.text = ""
-        button.minWidth = dp(36)
-        button.minHeight = dp(36)
+        button.minWidth = dp(sizeDp)
+        button.minHeight = dp(sizeDp)
         button.setPadding(0, 0, 0, 0)
 
         val bg = GradientDrawable()
@@ -759,8 +759,39 @@ class MyAccessibilityService : AccessibilityService() {
         button.background = bg
         button.elevation = dp(2).toFloat()
 
-        val lp = LinearLayout.LayoutParams(dp(36), dp(36))
-        lp.setMargins(dp(4), dp(4), dp(4), dp(4))
+        val lp = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+        lp.setMargins(dp(2), dp(2), dp(2), dp(2))
+        button.layoutParams = lp
+
+        button.setOnClickListener { onClick() }
+        return button
+    }
+
+    /** Компактная кнопка только для тесной панели инструментов маркера. */
+    private fun createCompactIconButton(text: String, onClick: () -> Unit): Button {
+        val button = Button(this)
+        button.text = text
+        button.textSize = 10f
+        button.setTextColor(Color.parseColor("#00E5FF"))
+        button.isAllCaps = true
+        button.letterSpacing = 0.02f
+        button.minWidth = 0
+        button.minHeight = 0
+        button.setPadding(dp(8), dp(6), dp(8), dp(6))
+
+        val bg = GradientDrawable()
+        bg.shape = GradientDrawable.RECTANGLE
+        bg.cornerRadius = dp(3).toFloat()
+        bg.setColor(Color.parseColor("#E60A0A0F"))
+        bg.setStroke(dp(1), Color.parseColor("#00E5FF"))
+        button.background = bg
+        button.elevation = dp(2).toFloat()
+
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.setMargins(dp(2), dp(2), dp(2), dp(2))
         button.layoutParams = lp
 
         button.setOnClickListener { onClick() }
@@ -789,41 +820,41 @@ class MyAccessibilityService : AccessibilityService() {
         toolsRow.orientation = LinearLayout.HORIZONTAL
         toolsRow.gravity = Gravity.CENTER
 
-        val redButton = createColorSwatchButton(Color.parseColor("#FF3B30")) {
+        val redButton = createColorSwatchButton(Color.parseColor("#FF3B30"), sizeDp = 26) {
             drawView.setColor(Color.parseColor("#FF3B30"))
         }
-        val yellowButton = createColorSwatchButton(Color.parseColor("#FFD60A")) {
+        val yellowButton = createColorSwatchButton(Color.parseColor("#FFD60A"), sizeDp = 26) {
             drawView.setColor(Color.parseColor("#FFD60A"))
         }
-        val greenButton = createColorSwatchButton(Color.parseColor("#34C759")) {
+        val greenButton = createColorSwatchButton(Color.parseColor("#34C759"), sizeDp = 26) {
             drawView.setColor(Color.parseColor("#34C759"))
         }
-        val blueButton = createColorSwatchButton(Color.parseColor("#0A84FF")) {
+        val blueButton = createColorSwatchButton(Color.parseColor("#0A84FF"), sizeDp = 26) {
             drawView.setColor(Color.parseColor("#0A84FF"))
         }
-        val whiteButton = createColorSwatchButton(Color.WHITE) {
+        val whiteButton = createColorSwatchButton(Color.WHITE, sizeDp = 26) {
             drawView.setColor(Color.WHITE)
         }
 
-        val eraserButton = createIconButton("Eraser") {
+        val eraserButton = createCompactIconButton("Eraser") {
             drawView.setEraser()
         }
 
-        val blurButton = createIconButton("Blur") {
+        val blurButton = createCompactIconButton("Blur") {
             drawView.setBlur()
         }
 
-        val thinnerButton = createIconButton("-") {
+        val thinnerButton = createCompactIconButton("-") {
             val newWidth = (drawView.getStrokeWidth() - dp(2)).coerceAtLeast(dp(2).toFloat())
             drawView.setStrokeWidth(newWidth)
         }
 
-        val thickerButton = createIconButton("+") {
+        val thickerButton = createCompactIconButton("+") {
             val newWidth = (drawView.getStrokeWidth() + dp(2)).coerceAtMost(dp(30).toFloat())
             drawView.setStrokeWidth(newWidth)
         }
 
-        val clearButton = createIconButton("Clear") {
+        val clearButton = createCompactIconButton("Clear") {
             drawView.clearDrawing()
         }
 
@@ -844,7 +875,7 @@ class MyAccessibilityService : AccessibilityService() {
         toolsBg.setColor(Color.parseColor("#DD08080C"))
         toolsBg.setStroke(dp(1), cyan)
         toolsRow.background = toolsBg
-        toolsRow.setPadding(dp(6), dp(6), dp(6), dp(6))
+        toolsRow.setPadding(dp(4), dp(4), dp(4), dp(4))
 
         // кружок-превью текущего инструмента (цвет/размер маркера, сетка для ластика/blur)
         val previewView = MarkerDrawingView.ToolPreviewView(this)
