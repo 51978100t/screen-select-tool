@@ -770,6 +770,7 @@ class MyAccessibilityService : AccessibilityService() {
     private fun showMarkerScreen(bitmap: Bitmap) {
         val container = FrameLayout(this)
         container.setBackgroundColor(Color.parseColor("#F008080C"))
+        val (screenWidth, _) = getScreenSize()
 
         val drawView = MarkerDrawingView(this, bitmap)
         container.addView(
@@ -860,7 +861,20 @@ class MyAccessibilityService : AccessibilityService() {
         val toolsWrapper = LinearLayout(this)
         toolsWrapper.orientation = LinearLayout.VERTICAL
         toolsWrapper.gravity = Gravity.CENTER_HORIZONTAL
-        toolsWrapper.addView(toolsRow)
+
+        toolsRow.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        val toolsScroll = android.widget.HorizontalScrollView(this)
+        toolsScroll.isHorizontalScrollBarEnabled = false
+        toolsScroll.addView(toolsRow)
+
+        val scrollParamsForTools = LinearLayout.LayoutParams(
+            (screenWidth * 0.9f).toInt(),
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        toolsWrapper.addView(toolsScroll, scrollParamsForTools)
         toolsWrapper.addView(previewView, previewParams)
 
         val toolsWrapperParams = FrameLayout.LayoutParams(
