@@ -37,7 +37,12 @@ class MarkerDrawingView(
 
     private var currentTool = Tool.MARKER
     private var currentColor = Color.parseColor("#FF3B30") // красный по умолчанию
-    private var strokeWidth = 10f
+
+    private val density = context.resources.displayMetrics.density
+    // маркер — тонкая линия по умолчанию; ластик/blur — сразу крупнее (удобнее для замазывания)
+    private var markerStrokeWidth = 10f
+    private var eraserBlurStrokeWidth = 24f * density
+    private var strokeWidth = markerStrokeWidth
 
     /** Вызывается при любом изменении инструмента/цвета/толщины — для обновления превью. */
     var onToolChanged: (() -> Unit)? = null
@@ -102,22 +107,35 @@ class MarkerDrawingView(
 
     fun setColor(color: Int) {
         currentColor = color
+        if (currentTool != Tool.MARKER) {
+            strokeWidth = markerStrokeWidth
+        }
         currentTool = Tool.MARKER
         onToolChanged?.invoke()
     }
 
     fun setEraser() {
+        if (currentTool == Tool.MARKER) {
+            strokeWidth = eraserBlurStrokeWidth
+        }
         currentTool = Tool.ERASER
         onToolChanged?.invoke()
     }
 
     fun setBlur() {
+        if (currentTool == Tool.MARKER) {
+            strokeWidth = eraserBlurStrokeWidth
+        }
         currentTool = Tool.BLUR
         onToolChanged?.invoke()
     }
 
     fun setStrokeWidth(width: Float) {
         strokeWidth = width
+        when (currentTool) {
+            Tool.MARKER -> markerStrokeWidth = width
+            Tool.ERASER, Tool.BLUR -> eraserBlurStrokeWidth = width
+        }
         onToolChanged?.invoke()
     }
 
@@ -170,16 +188,35 @@ class MarkerDrawingView(
             }
             Tool.BLUR -> {
                 val padding = strokeWidth
-                val left = minOf(x1, x2) - padding
-                val top = minOf(y1, y2) - padding
-                val right = maxOf(x1, x2) + padding
-                val bottom = maxOf(y1, y2) + padding
+                val left = (minOf(x1, x2) - padding).coerceAtLeast(0f)
+                val top = (minOf(y1, y2) - padding).coerceAtLeast(0f)
+                val right = (maxOf(x1, x2) + padding).coerceAtMost(overlayBitmap.width.toFloat())
+                val bottom = (maxOf(y1, y2) + padding).coerceAtMost(overlayBitmap.height.toFloat())
 
-                val saveCount = overlayCanvas.saveLayer(left, top, right, bottom, null)
+                val w = (right - left).toInt().coerceAtLeast(1)
+                val h = (bottom - top).toInt().coerceAtLeast(1)
+                if (left >= right || top >= bottom) return
+
+                // временный слой строго по размеру мазка (не всего скриншота) — быстро
+                val patch = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                val patchCanvas = Canvas(patch)
+
                 maskPaint.strokeWidth = strokeWidth
-                overlayCanvas.drawLine(x1, y1, x2, y2, maskPaint)
-                overlayCanvas.drawBitmap(blurredBitmap, 0f, 0f, blurStampPaint)
-                overlayCanvas.restoreToCount(saveCount)
+                patchCanvas.drawLine(x1 - left, y1 - top, x2 - left, y2 - top, maskPaint)
+
+                val srcLeft = left.toInt().coerceAtMost(blurredBitmap.width - 1)
+                val srcTop = top.toInt().coerceAtMost(blurredBitmap.height - 1)
+                val srcRight = (srcLeft + w).coerceAtMost(blurredBitmap.width)
+                val srcBottom = (srcTop + h).coerceAtMost(blurredBitmap.height)
+                patchCanvas.drawBitmap(
+                    blurredBitmap,
+                    android.graphics.Rect(srcLeft, srcTop, srcRight, srcBottom),
+                    android.graphics.Rect(0, 0, srcRight - srcLeft, srcBottom - srcTop),
+                    blurStampPaint
+                )
+
+                overlayCanvas.drawBitmap(patch, left, top, null)
+                patch.recycle()
             }
         }
     }
