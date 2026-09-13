@@ -251,23 +251,23 @@ class MyAccessibilityService : AccessibilityService() {
             closeSelectionScreen()
         }
 
-        val zoomButton = createIconButton("Просмотр") {
+        val zoomButton = createIconButton("View") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> showZoomScreen(bitmap) } }
         }
 
-        val markerButton = createIconButton("Маркер") {
+        val markerButton = createIconButton("Marker") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> showMarkerScreen(bitmap) } }
         }
 
-        val textButton = createIconButton("Текст") {
+        val textButton = createIconButton("Text") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> recognizeAndShowText(bitmap) } }
         }
 
-        val translateButton = createIconButton("Перевод") {
+        val translateButton = createIconButton("Translate") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> translateAndShowText(bitmap) } }
         }
 
-        val shareButton = createIconButton("Поделиться") {
+        val shareButton = createIconButton("Share") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> shareScreenshot(bitmap) } }
         }
 
@@ -309,6 +309,15 @@ class MyAccessibilityService : AccessibilityService() {
     private fun captureCropped(rect: Rect, onReady: (Bitmap) -> Unit) {
         closeSelectionScreen()
 
+        // небольшая пауза, чтобы система успела физически убрать оверлей
+        // с экрана до захвата кадра — иначе на скриншоте останутся
+        // голубые уголки выделения
+        Handler(Looper.getMainLooper()).postDelayed({
+            takeScreenshotInternal(rect, onReady)
+        }, 120)
+    }
+
+    private fun takeScreenshotInternal(rect: Rect, onReady: (Bitmap) -> Unit) {
         takeScreenshot(
             Display.DEFAULT_DISPLAY,
             mainExecutor,
@@ -508,7 +517,7 @@ class MyAccessibilityService : AccessibilityService() {
         rowLp.topMargin = dp(16)
         buttonsRow.layoutParams = rowLp
 
-        val closeButton = createIconButton("Закрыть") {
+        val closeButton = createIconButton("Close") {
             windowManager?.removeView(container)
         }
 
@@ -535,7 +544,7 @@ class MyAccessibilityService : AccessibilityService() {
             } else {
                 TranslateLanguage.fromLanguageTag(languageCode) ?: TranslateLanguage.ENGLISH
             }
-            val translateButton = createIconButton("Перевести") {
+            val translateButton = createIconButton("Translate") {
                 val edited = editText.text.toString()
                 windowManager?.removeView(container)
                 translateText(edited, sourceLang, TranslateLanguage.RUSSIAN) { translated ->
@@ -613,12 +622,12 @@ class MyAccessibilityService : AccessibilityService() {
         rowLp.topMargin = dp(16)
         buttonsRow.layoutParams = rowLp
 
-        val copyButton = createIconButton("Скопировать") {
+        val copyButton = createIconButton("Copy") {
             val clipboard = getSystemService(ClipboardManager::class.java)
             clipboard.setPrimaryClip(ClipData.newPlainText("text", text))
             showNotification("Скопировано", "Текст в буфере обмена")
         }
-        val closeButton = createIconButton("Закрыть") {
+        val closeButton = createIconButton("Close") {
             windowManager?.removeView(container)
         }
         buttonsRow.addView(copyButton)
@@ -713,7 +722,7 @@ class MyAccessibilityService : AccessibilityService() {
         addCorner(container, false, true, cyan)
         addCorner(container, false, false, cyan)
 
-        val closeButton = createIconButton("Закрыть") {
+        val closeButton = createIconButton("Close") {
             windowManager?.removeView(container)
         }
 
@@ -795,7 +804,7 @@ class MyAccessibilityService : AccessibilityService() {
             drawView.setColor(Color.WHITE)
         }
 
-        val eraserButton = createIconButton("Ластик") {
+        val eraserButton = createIconButton("Eraser") {
             drawView.setEraser(true)
         }
 
@@ -809,7 +818,7 @@ class MyAccessibilityService : AccessibilityService() {
             drawView.setStrokeWidth(newWidth)
         }
 
-        val clearButton = createIconButton("Очистить") {
+        val clearButton = createIconButton("Clear") {
             drawView.clearDrawing()
         }
 
@@ -844,10 +853,10 @@ class MyAccessibilityService : AccessibilityService() {
         bottomRow.orientation = LinearLayout.HORIZONTAL
         bottomRow.gravity = Gravity.CENTER
 
-        val closeButton = createIconButton("Закрыть") {
+        val closeButton = createIconButton("Close") {
             windowManager?.removeView(container)
         }
-        val shareButton = createIconButton("Поделиться") {
+        val shareButton = createIconButton("Share") {
             shareScreenshot(drawView.getResultBitmap())
             windowManager?.removeView(container)
         }

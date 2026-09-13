@@ -63,7 +63,7 @@ class MainActivity : Activity() {
         statusText.setPadding(dp(18), dp(10), dp(18), dp(10))
 
         val startButton = Button(this)
-        startButton.text = "Старт"
+        startButton.text = "Start"
         startButton.textSize = 15f
         startButton.setTextColor(cyan)
         startButton.isAllCaps = true
