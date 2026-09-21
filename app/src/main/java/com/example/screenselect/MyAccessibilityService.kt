@@ -464,8 +464,11 @@ class MyAccessibilityService : AccessibilityService() {
                     try {
                         do {
                             val lineText = iterator.getUTF8Text(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE)
-                            val rect = iterator.getBoundingBox(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE)
-                            if (!lineText.isNullOrBlank() && rect != null) {
+                            // в этой версии библиотеки getBoundingBox возвращает
+                            // IntArray [left, top, right, bottom], а не Rect
+                            val box = iterator.getBoundingBox(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE)
+                            if (!lineText.isNullOrBlank() && box != null && box.size == 4) {
+                                val rect = Rect(box[0], box[1], box[2], box[3])
                                 lines.add(OcrLine(lineText.trim(), rect))
                             }
                         } while (iterator.next(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE))
