@@ -18,16 +18,13 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
-      - name: Generate signing keystore
-        run: |
-          keytool -genkeypair -v \
-            -keystore app/release.keystore \
-            -alias screenselect \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass screenselect123 -keypass screenselect123 \
-            -dname "CN=ScreenSelect, OU=Personal, O=Personal, L=Unknown, S=Unknown, C=US"
+      - name: Restore signing keystore
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
 
       - name: Build APKs
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
           gradle wrapper --gradle-version 8.7
           ./gradlew assembleDebug assembleRelease
