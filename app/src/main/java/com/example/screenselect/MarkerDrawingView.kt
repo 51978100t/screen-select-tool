@@ -23,7 +23,7 @@ class MarkerDrawingView(
     private val baseBitmap: Bitmap
 ) : View(context) {
 
-    enum class Tool { MARKER, ERASER, BLUR }
+    enum class Tool { MARKER, ERASER, BLUR, RECTANGLE, RECTANGLE_FILL }
 
     data class ToolState(val tool: Tool, val color: Int, val strokeWidthPx: Float)
 
@@ -66,6 +66,20 @@ class MarkerDrawingView(
         isAntiAlias = true
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_IN)
     }
+
+    private val rectFillPaint = Paint().apply { isAntiAlias = true; style = Paint.Style.FILL }
+    private val rectStrokePaint = Paint().apply {
+        isAntiAlias = true
+        style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.MITER
+    }
+
+    // координаты прямоугольника, который сейчас тянут пальцем (в координатах битмапа)
+    private var rectStartX = 0f
+    private var rectStartY = 0f
+    private var rectCurrentX = 0f
+    private var rectCurrentY = 0f
+    private var isDraggingRect = false
 
     // matrix переводит координаты битмапа в координаты экрана (для отрисовки);
     // inverseMatrix — обратно, из координат касания в координаты битмапа
@@ -130,10 +144,26 @@ class MarkerDrawingView(
         onToolChanged?.invoke()
     }
 
+    fun setRectangleTool() {
+        if (currentTool == Tool.ERASER || currentTool == Tool.BLUR) {
+            strokeWidth = markerStrokeWidth
+        }
+        currentTool = Tool.RECTANGLE
+        onToolChanged?.invoke()
+    }
+
+    fun setRectangleFillTool() {
+        if (currentTool == Tool.ERASER || currentTool == Tool.BLUR) {
+            strokeWidth = markerStrokeWidth
+        }
+        currentTool = Tool.RECTANGLE_FILL
+        onToolChanged?.invoke()
+    }
+
     fun setStrokeWidth(width: Float) {
         strokeWidth = width
         when (currentTool) {
-            Tool.MARKER -> markerStrokeWidth = width
+            Tool.MARKER, Tool.RECTANGLE, Tool.RECTANGLE_FILL -> markerStrokeWidth = width
             Tool.ERASER, Tool.BLUR -> eraserBlurStrokeWidth = width
         }
         onToolChanged?.invoke()
@@ -163,7 +193,32 @@ class MarkerDrawingView(
         canvas.concat(matrix)
         canvas.drawBitmap(baseBitmap, 0f, 0f, null)
         canvas.drawBitmap(overlayBitmap, 0f, 0f, null)
+
+        if (isRectangleTool(currentTool) && isDraggingRect) {
+            drawRectShape(canvas, rectStartX, rectStartY, rectCurrentX, rectCurrentY, currentTool == Tool.RECTANGLE_FILL)
+        }
+
         canvas.restore()
+    }
+
+    private fun isRectangleTool(tool: Tool) = tool == Tool.RECTANGLE || tool == Tool.RECTANGLE_FILL
+
+    private fun drawRectShape(target: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, withFill: Boolean) {
+        val left = minOf(x1, x2)
+        val top = minOf(y1, y2)
+        val right = maxOf(x1, x2)
+        val bottom = maxOf(y1, y2)
+
+        if (withFill) {
+            rectFillPaint.color = currentColor
+            rectFillPaint.alpha = 70
+            target.drawRect(left, top, right, bottom, rectFillPaint)
+        }
+
+        rectStrokePaint.color = currentColor
+        rectStrokePaint.alpha = 255
+        rectStrokePaint.strokeWidth = markerStrokeWidth
+        target.drawRect(left, top, right, bottom, rectStrokePaint)
     }
 
     private fun mapToBitmap(x: Float, y: Float): FloatArray {
@@ -218,6 +273,9 @@ class MarkerDrawingView(
                 overlayCanvas.drawBitmap(patch, left, top, null)
                 patch.recycle()
             }
+            Tool.RECTANGLE, Tool.RECTANGLE_FILL -> {
+                // прямоугольник обрабатывается отдельно в onTouchEvent, сюда не попадает
+            }
         }
     }
 
@@ -225,6 +283,36 @@ class MarkerDrawingView(
         val pts = mapToBitmap(event.x, event.y)
         val mx = pts[0]
         val my = pts[1]
+
+        if (isRectangleTool(currentTool)) {
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    rectStartX = mx
+                    rectStartY = my
+                    rectCurrentX = mx
+                    rectCurrentY = my
+                    isDraggingRect = true
+                    invalidate()
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (isDraggingRect) {
+                        rectCurrentX = mx
+                        rectCurrentY = my
+                        invalidate()
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (isDraggingRect) {
+                        // отрисовка в overlayCanvas — то же самое, что живое превью,
+                        // но уже навсегда сохранённое в слой рисунка
+                        drawRectShape(overlayCanvas, rectStartX, rectStartY, rectCurrentX, rectCurrentY, currentTool == Tool.RECTANGLE_FILL)
+                        isDraggingRect = false
+                        invalidate()
+                    }
+                }
+            }
+            return true
+        }
 
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
@@ -267,6 +355,11 @@ class MarkerDrawingView(
             strokeWidth = 2f
             color = Color.parseColor("#80FFFFFF")
         }
+        private val shapeStrokePaint = Paint().apply {
+            isAntiAlias = true
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+        }
 
         fun updateState(state: ToolState) {
             tool = state.tool
@@ -285,12 +378,31 @@ class MarkerDrawingView(
                 Tool.MARKER -> {
                     fillPaint.color = color
                     canvas.drawCircle(cx, cy, radius, fillPaint)
+                    canvas.drawCircle(cx, cy, radius, outlinePaint)
                 }
-                Tool.ERASER -> drawChecker(canvas, cx, cy, radius, Color.parseColor("#EAEAEA"), Color.parseColor("#B0B0B0"))
-                Tool.BLUR -> drawChecker(canvas, cx, cy, radius, Color.parseColor("#606060"), Color.parseColor("#303030"))
+                Tool.ERASER -> {
+                    drawChecker(canvas, cx, cy, radius, Color.parseColor("#EAEAEA"), Color.parseColor("#B0B0B0"))
+                    canvas.drawCircle(cx, cy, radius, outlinePaint)
+                }
+                Tool.BLUR -> {
+                    drawChecker(canvas, cx, cy, radius, Color.parseColor("#606060"), Color.parseColor("#303030"))
+                    canvas.drawCircle(cx, cy, radius, outlinePaint)
+                }
+                Tool.RECTANGLE -> {
+                    val half = minOf(width, height) * 0.3f
+                    shapeStrokePaint.color = color
+                    canvas.drawRect(cx - half, cy - half, cx + half, cy + half, shapeStrokePaint)
+                }
+                Tool.RECTANGLE_FILL -> {
+                    val half = minOf(width, height) * 0.3f
+                    fillPaint.color = color
+                    fillPaint.alpha = 90
+                    canvas.drawRect(cx - half, cy - half, cx + half, cy + half, fillPaint)
+                    fillPaint.alpha = 255
+                    shapeStrokePaint.color = color
+                    canvas.drawRect(cx - half, cy - half, cx + half, cy + half, shapeStrokePaint)
+                }
             }
-
-            canvas.drawCircle(cx, cy, radius, outlinePaint)
         }
 
         private fun drawChecker(canvas: Canvas, cx: Float, cy: Float, radius: Float, colorA: Int, colorB: Int) {

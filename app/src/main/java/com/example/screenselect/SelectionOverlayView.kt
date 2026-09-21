@@ -133,4 +133,18 @@ class SelectionOverlayView(
         animating = false
         invalidate()
     }
+
+    /** Программно выделяет весь экран (для кнопки "Full") — как будто пользователь
+     *  провёл пальцем от левого верхнего до правого нижнего угла. */
+    fun selectFullScreen() {
+        startX = 0f
+        startY = 0f
+        currentX = width.toFloat()
+        currentY = height.toFloat()
+        selecting = false
+        hasSelection = true
+        animating = false
+        invalidate()
+        onSelectionChanged(Rect(0, 0, width, height))
+    }
 }

@@ -199,8 +199,10 @@ class MyAccessibilityService : AccessibilityService() {
                 left = rect.left
                 top = rect.top - toolbarHeight - gap
             } else {
-                left = rect.left
-                top = rect.bottom + gap
+                // снаружи выделения нигде нет места (выделение занимает весь
+                // экран или почти весь) — ставим панель внутрь самой области
+                left = rect.left + gap
+                top = rect.top + gap
             }
 
             left = left.coerceIn(0, (screenWidth - toolbarWidth).coerceAtLeast(0))
@@ -251,6 +253,10 @@ class MyAccessibilityService : AccessibilityService() {
             closeSelectionScreen()
         }
 
+        val fullButton = createIconButton("Full") {
+            overlay.selectFullScreen()
+        }
+
         val zoomButton = createIconButton("View") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> showZoomScreen(bitmap) } }
         }
@@ -267,15 +273,21 @@ class MyAccessibilityService : AccessibilityService() {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> translateAndShowText(bitmap) } }
         }
 
+        val screenTranslateButton = createIconButton("ScrTr") {
+            captureFullScreen { bitmap -> translateWholeScreen(bitmap) }
+        }
+
         val shareButton = createIconButton("Share") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> shareScreenshot(bitmap) } }
         }
 
         toolbar.addView(closeButton)
+        toolbar.addView(fullButton)
         toolbar.addView(zoomButton)
         toolbar.addView(markerButton)
         toolbar.addView(textButton)
         toolbar.addView(translateButton)
+        toolbar.addView(screenTranslateButton)
         toolbar.addView(shareButton)
 
         val toolbarParams = FrameLayout.LayoutParams(
@@ -314,6 +326,39 @@ class MyAccessibilityService : AccessibilityService() {
         // голубые уголки выделения
         Handler(Looper.getMainLooper()).postDelayed({
             takeScreenshotInternal(rect, onReady)
+        }, 120)
+    }
+
+    private fun captureFullScreen(onReady: (Bitmap) -> Unit) {
+        closeSelectionScreen()
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        val hardwareBitmap = Bitmap.wrapHardwareBuffer(
+                            screenshot.hardwareBuffer,
+                            screenshot.colorSpace
+                        )
+                        screenshot.hardwareBuffer.close()
+
+                        if (hardwareBitmap == null) {
+                            showNotification("Ошибка", "Не удалось получить скриншот")
+                            return
+                        }
+
+                        val softwareBitmap = hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
+                        hardwareBitmap.recycle()
+                        onReady(softwareBitmap)
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        showNotification("Ошибка скриншота", "Код=" + errorCode)
+                    }
+                }
+            )
         }, 120)
     }
 
@@ -390,6 +435,48 @@ class MyAccessibilityService : AccessibilityService() {
                 }
             }
         }.start()
+    }
+
+    data class OcrLine(val text: String, val rect: Rect)
+
+    private fun runOcrWithBoxes(bitmap: Bitmap, onResult: (List<OcrLine>) -> Unit) {
+        showNotification("Распознавание", "Читаю текст на экране...")
+        ensureTessData {
+            Thread {
+                val dataPath = File(filesDir, "tesseract").absolutePath
+                val tess = TessBaseAPI()
+                val ok = tess.init(dataPath, "rus+eng+est")
+                if (!ok) {
+                    tess.recycle()
+                    Handler(Looper.getMainLooper()).post {
+                        showNotification("Ошибка", "Не удалось запустить распознавание")
+                    }
+                    return@Thread
+                }
+                tess.setImage(bitmap)
+                // обращение к utF8Text запускает полное распознавание страницы —
+                // без этого итератор ниже будет пустым
+                tess.utF8Text
+
+                val lines = mutableListOf<OcrLine>()
+                val iterator = tess.resultIterator
+                if (iterator != null) {
+                    try {
+                        do {
+                            val lineText = iterator.getUTF8Text(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE)
+                            val rect = iterator.getBoundingBox(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE)
+                            if (!lineText.isNullOrBlank() && rect != null) {
+                                lines.add(OcrLine(lineText.trim(), rect))
+                            }
+                        } while (iterator.next(TessBaseAPI.PageIteratorLevel.RIL_TEXTLINE))
+                    } finally {
+                        iterator.delete()
+                    }
+                }
+                tess.recycle()
+                Handler(Looper.getMainLooper()).post { onResult(lines) }
+            }.start()
+        }
     }
 
     private fun runOcr(bitmap: Bitmap, onResult: (String) -> Unit) {
@@ -844,6 +931,14 @@ class MyAccessibilityService : AccessibilityService() {
             drawView.setBlur()
         }
 
+        val rectButton = createCompactIconButton("Rect") {
+            drawView.setRectangleTool()
+        }
+
+        val rectFillButton = createCompactIconButton("RectF") {
+            drawView.setRectangleFillTool()
+        }
+
         val thinnerButton = createCompactIconButton("-") {
             val newWidth = (drawView.getStrokeWidth() - dp(2)).coerceAtLeast(dp(2).toFloat())
             drawView.setStrokeWidth(newWidth)
@@ -865,6 +960,8 @@ class MyAccessibilityService : AccessibilityService() {
         toolsRow.addView(whiteButton)
         toolsRow.addView(eraserButton)
         toolsRow.addView(blurButton)
+        toolsRow.addView(rectButton)
+        toolsRow.addView(rectFillButton)
         toolsRow.addView(thinnerButton)
         toolsRow.addView(thickerButton)
         toolsRow.addView(clearButton)
@@ -938,6 +1035,86 @@ class MyAccessibilityService : AccessibilityService() {
         bottomParams.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         bottomParams.bottomMargin = dp(40)
         container.addView(bottomRow, bottomParams)
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        )
+
+        windowManager?.addView(container, params)
+    }
+
+    private fun translateWholeScreen(bitmap: Bitmap) {
+        runOcrWithBoxes(bitmap) { lines ->
+            if (lines.isEmpty()) {
+                showNotification("Текст не найден", "На экране нет текста для перевода")
+                return@runOcrWithBoxes
+            }
+
+            val results = arrayOfNulls<ScreenTextBlock>(lines.size)
+            var remaining = lines.size
+
+            fun finishIfDone() {
+                if (remaining == 0) {
+                    showScreenTranslateOverlay(bitmap, results.filterNotNull())
+                }
+            }
+
+            lines.forEachIndexed { index, line ->
+                val languageIdentifier = LanguageIdentification.getClient()
+                languageIdentifier.identifyLanguage(line.text)
+                    .addOnSuccessListener { languageCode ->
+                        if (languageCode == "ru" || languageCode == "und") {
+                            // уже по-русски (или язык не определён) — оставляем как есть
+                            results[index] = ScreenTextBlock(line.rect, line.text, line.text)
+                            remaining--
+                            finishIfDone()
+                        } else {
+                            translateText(line.text, languageCode, "ru") { translated ->
+                                results[index] = ScreenTextBlock(line.rect, line.text, translated)
+                                remaining--
+                                finishIfDone()
+                            }
+                        }
+                    }
+                    .addOnFailureListener {
+                        remaining--
+                        finishIfDone()
+                    }
+            }
+        }
+    }
+
+    private fun showScreenTranslateOverlay(bitmap: Bitmap, blocks: List<ScreenTextBlock>) {
+        val container = FrameLayout(this)
+        container.setBackgroundColor(Color.parseColor("#F008080C"))
+
+        val translateView = ScreenTranslateView(this, bitmap, blocks)
+        container.addView(
+            translateView,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        )
+
+        val cyan = Color.parseColor("#00E5FF")
+        addCorner(container, true, true, cyan)
+        addCorner(container, true, false, cyan)
+        addCorner(container, false, true, cyan)
+        addCorner(container, false, false, cyan)
+
+        val closeButton = createIconButton("\u2715") {
+            windowManager?.removeView(container)
+        }
+        val closeParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        closeParams.gravity = Gravity.TOP or Gravity.END
+        closeParams.topMargin = dp(40)
+        closeParams.rightMargin = dp(20)
+        container.addView(closeButton, closeParams)
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
