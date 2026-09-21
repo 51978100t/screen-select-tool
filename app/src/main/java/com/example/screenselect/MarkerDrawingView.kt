@@ -40,7 +40,7 @@ class MarkerDrawingView(
 
     private val density = context.resources.displayMetrics.density
     // маркер — тонкая линия по умолчанию; ластик/blur — сразу крупнее (удобнее для замазывания)
-    private var markerStrokeWidth = 10f
+    private var markerStrokeWidth = 8f
     private var eraserBlurStrokeWidth = 24f * density
     private var strokeWidth = markerStrokeWidth
 

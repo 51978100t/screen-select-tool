@@ -222,7 +222,7 @@ class MyAccessibilityService : AccessibilityService() {
         val container = FrameLayout(this)
 
         val toolbar = LinearLayout(this)
-        toolbar.orientation = LinearLayout.HORIZONTAL
+        toolbar.orientation = LinearLayout.VERTICAL
         toolbar.visibility = View.GONE
 
         val toolbarBg = GradientDrawable()
@@ -232,6 +232,11 @@ class MyAccessibilityService : AccessibilityService() {
         toolbarBg.setStroke(dp(1), Color.parseColor("#4D00E5FF"))
         toolbar.background = toolbarBg
         toolbar.setPadding(dp(6), dp(6), dp(6), dp(6))
+
+        val toolbarRow1 = LinearLayout(this)
+        toolbarRow1.orientation = LinearLayout.HORIZONTAL
+        val toolbarRow2 = LinearLayout(this)
+        toolbarRow2.orientation = LinearLayout.HORIZONTAL
 
         val overlay = SelectionOverlayView(this) { rect ->
             if (rect == null) {
@@ -273,22 +278,26 @@ class MyAccessibilityService : AccessibilityService() {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> translateAndShowText(bitmap) } }
         }
 
-        val screenTranslateButton = createIconButton("ScrTr") {
-            captureFullScreen { bitmap -> translateWholeScreen(bitmap) }
+        val screenTranslateButton = createIconButton("Lens") {
+            lastRect?.let { rect -> captureCropped(rect) { bitmap -> translateSelectedArea(bitmap) } }
         }
 
         val shareButton = createIconButton("Share") {
             lastRect?.let { rect -> captureCropped(rect) { bitmap -> shareScreenshot(bitmap) } }
         }
 
-        toolbar.addView(closeButton)
-        toolbar.addView(fullButton)
-        toolbar.addView(zoomButton)
-        toolbar.addView(markerButton)
-        toolbar.addView(textButton)
-        toolbar.addView(translateButton)
-        toolbar.addView(screenTranslateButton)
-        toolbar.addView(shareButton)
+        toolbarRow1.addView(closeButton)
+        toolbarRow1.addView(fullButton)
+        toolbarRow1.addView(zoomButton)
+        toolbarRow1.addView(markerButton)
+
+        toolbarRow2.addView(textButton)
+        toolbarRow2.addView(translateButton)
+        toolbarRow2.addView(screenTranslateButton)
+        toolbarRow2.addView(shareButton)
+
+        toolbar.addView(toolbarRow1)
+        toolbar.addView(toolbarRow2)
 
         val toolbarParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -329,38 +338,6 @@ class MyAccessibilityService : AccessibilityService() {
         }, 120)
     }
 
-    private fun captureFullScreen(onReady: (Bitmap) -> Unit) {
-        closeSelectionScreen()
-
-        Handler(Looper.getMainLooper()).postDelayed({
-            takeScreenshot(
-                Display.DEFAULT_DISPLAY,
-                mainExecutor,
-                object : TakeScreenshotCallback {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
-                        val hardwareBitmap = Bitmap.wrapHardwareBuffer(
-                            screenshot.hardwareBuffer,
-                            screenshot.colorSpace
-                        )
-                        screenshot.hardwareBuffer.close()
-
-                        if (hardwareBitmap == null) {
-                            showNotification("Ошибка", "Не удалось получить скриншот")
-                            return
-                        }
-
-                        val softwareBitmap = hardwareBitmap.copy(Bitmap.Config.ARGB_8888, false)
-                        hardwareBitmap.recycle()
-                        onReady(softwareBitmap)
-                    }
-
-                    override fun onFailure(errorCode: Int) {
-                        showNotification("Ошибка скриншота", "Код=" + errorCode)
-                    }
-                }
-            )
-        }, 120)
-    }
 
     private fun takeScreenshotInternal(rect: Rect, onReady: (Bitmap) -> Unit) {
         takeScreenshot(
@@ -867,7 +844,7 @@ class MyAccessibilityService : AccessibilityService() {
         button.letterSpacing = 0.02f
         button.minWidth = 0
         button.minHeight = 0
-        button.setPadding(dp(8), dp(6), dp(8), dp(6))
+        button.setPadding(dp(6), dp(5), dp(6), dp(5))
 
         val bg = GradientDrawable()
         bg.shape = GradientDrawable.RECTANGLE
@@ -891,7 +868,6 @@ class MyAccessibilityService : AccessibilityService() {
     private fun showMarkerScreen(bitmap: Bitmap) {
         val container = FrameLayout(this)
         container.setBackgroundColor(Color.parseColor("#F008080C"))
-        val (screenWidth, _) = getScreenSize()
 
         val drawView = MarkerDrawingView(this, bitmap)
         container.addView(
@@ -905,24 +881,28 @@ class MyAccessibilityService : AccessibilityService() {
         addCorner(container, false, true, cyan)
         addCorner(container, false, false, cyan)
 
-        // верхняя панель: цвета, ластик, толщина, очистить
-        val toolsRow = LinearLayout(this)
-        toolsRow.orientation = LinearLayout.HORIZONTAL
-        toolsRow.gravity = Gravity.CENTER
+        // верхняя панель: цвета, ластик, blur, прямоугольники, толщина, очистить — в два ряда
+        val toolsRow1 = LinearLayout(this)
+        toolsRow1.orientation = LinearLayout.HORIZONTAL
+        toolsRow1.gravity = Gravity.CENTER
 
-        val redButton = createColorSwatchButton(Color.parseColor("#FF3B30"), sizeDp = 26) {
+        val toolsRow2 = LinearLayout(this)
+        toolsRow2.orientation = LinearLayout.HORIZONTAL
+        toolsRow2.gravity = Gravity.CENTER
+
+        val redButton = createColorSwatchButton(Color.parseColor("#FF3B30"), sizeDp = 22) {
             drawView.setColor(Color.parseColor("#FF3B30"))
         }
-        val yellowButton = createColorSwatchButton(Color.parseColor("#FFD60A"), sizeDp = 26) {
+        val yellowButton = createColorSwatchButton(Color.parseColor("#FFD60A"), sizeDp = 22) {
             drawView.setColor(Color.parseColor("#FFD60A"))
         }
-        val greenButton = createColorSwatchButton(Color.parseColor("#34C759"), sizeDp = 26) {
+        val greenButton = createColorSwatchButton(Color.parseColor("#34C759"), sizeDp = 22) {
             drawView.setColor(Color.parseColor("#34C759"))
         }
-        val blueButton = createColorSwatchButton(Color.parseColor("#0A84FF"), sizeDp = 26) {
+        val blueButton = createColorSwatchButton(Color.parseColor("#0A84FF"), sizeDp = 22) {
             drawView.setColor(Color.parseColor("#0A84FF"))
         }
-        val whiteButton = createColorSwatchButton(Color.WHITE, sizeDp = 26) {
+        val whiteButton = createColorSwatchButton(Color.WHITE, sizeDp = 22) {
             drawView.setColor(Color.WHITE)
         }
 
@@ -956,26 +936,33 @@ class MyAccessibilityService : AccessibilityService() {
             drawView.clearDrawing()
         }
 
-        toolsRow.addView(redButton)
-        toolsRow.addView(yellowButton)
-        toolsRow.addView(greenButton)
-        toolsRow.addView(blueButton)
-        toolsRow.addView(whiteButton)
-        toolsRow.addView(eraserButton)
-        toolsRow.addView(blurButton)
-        toolsRow.addView(rectButton)
-        toolsRow.addView(rectFillButton)
-        toolsRow.addView(thinnerButton)
-        toolsRow.addView(thickerButton)
-        toolsRow.addView(clearButton)
+        toolsRow1.addView(redButton)
+        toolsRow1.addView(yellowButton)
+        toolsRow1.addView(greenButton)
+        toolsRow1.addView(blueButton)
+        toolsRow1.addView(whiteButton)
+        toolsRow1.addView(eraserButton)
+        toolsRow1.addView(blurButton)
+
+        toolsRow2.addView(rectButton)
+        toolsRow2.addView(rectFillButton)
+        toolsRow2.addView(thinnerButton)
+        toolsRow2.addView(thickerButton)
+        toolsRow2.addView(clearButton)
 
         val toolsBg = GradientDrawable()
         toolsBg.shape = GradientDrawable.RECTANGLE
         toolsBg.cornerRadius = dp(6).toFloat()
         toolsBg.setColor(Color.parseColor("#DD08080C"))
         toolsBg.setStroke(dp(1), cyan)
-        toolsRow.background = toolsBg
-        toolsRow.setPadding(dp(4), dp(4), dp(4), dp(4))
+
+        val toolsRowsWrapper = LinearLayout(this)
+        toolsRowsWrapper.orientation = LinearLayout.VERTICAL
+        toolsRowsWrapper.gravity = Gravity.CENTER_HORIZONTAL
+        toolsRowsWrapper.background = toolsBg
+        toolsRowsWrapper.setPadding(dp(4), dp(4), dp(4), dp(4))
+        toolsRowsWrapper.addView(toolsRow1)
+        toolsRowsWrapper.addView(toolsRow2)
 
         // кружок-превью текущего инструмента (цвет/размер маркера, сетка для ластика/blur)
         val previewView = MarkerDrawingView.ToolPreviewView(this)
@@ -993,19 +980,11 @@ class MyAccessibilityService : AccessibilityService() {
         toolsWrapper.orientation = LinearLayout.VERTICAL
         toolsWrapper.gravity = Gravity.CENTER_HORIZONTAL
 
-        toolsRow.layoutParams = LinearLayout.LayoutParams(
+        toolsRowsWrapper.layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        val toolsScroll = android.widget.HorizontalScrollView(this)
-        toolsScroll.isHorizontalScrollBarEnabled = false
-        toolsScroll.addView(toolsRow)
-
-        val scrollParamsForTools = LinearLayout.LayoutParams(
-            (screenWidth * 0.9f).toInt(),
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
-        toolsWrapper.addView(toolsScroll, scrollParamsForTools)
+        toolsWrapper.addView(toolsRowsWrapper)
         toolsWrapper.addView(previewView, previewParams)
 
         val toolsWrapperParams = FrameLayout.LayoutParams(
@@ -1050,45 +1029,72 @@ class MyAccessibilityService : AccessibilityService() {
         windowManager?.addView(container, params)
     }
 
-    private fun translateWholeScreen(bitmap: Bitmap) {
+    private fun translateSelectedArea(bitmap: Bitmap) {
         runOcrWithBoxes(bitmap) { lines ->
             if (lines.isEmpty()) {
-                showNotification("Текст не найден", "На экране нет текста для перевода")
+                showNotification("Текст не найден", "В выделенной области нет текста")
                 return@runOcrWithBoxes
             }
 
-            val results = arrayOfNulls<ScreenTextBlock>(lines.size)
-            var remaining = lines.size
+            // определяем язык один раз по всему тексту сразу (не по каждой строке
+            // отдельно) — так и быстрее, и не запускает несколько параллельных
+            // загрузок модели перевода, которые мешали друг другу
+            val combinedText = lines.joinToString("\n") { it.text }
+            val languageIdentifier = LanguageIdentification.getClient()
+            languageIdentifier.identifyLanguage(combinedText)
+                .addOnSuccessListener { languageCode ->
+                    if (languageCode == "ru" || languageCode == "und") {
+                        val blocks = lines.map { ScreenTextBlock(it.rect, it.text, it.text) }
+                        showScreenTranslateOverlay(bitmap, blocks)
+                    } else {
+                        val options = TranslatorOptions.Builder()
+                            .setSourceLanguage(languageCode)
+                            .setTargetLanguage(TranslateLanguage.RUSSIAN)
+                            .build()
+                        val translator = Translation.getClient(options)
+                        val conditions = DownloadConditions.Builder().build()
 
-            fun finishIfDone() {
-                if (remaining == 0) {
-                    showScreenTranslateOverlay(bitmap, results.filterNotNull())
-                }
-            }
-
-            lines.forEachIndexed { index, line ->
-                val languageIdentifier = LanguageIdentification.getClient()
-                languageIdentifier.identifyLanguage(line.text)
-                    .addOnSuccessListener { languageCode ->
-                        if (languageCode == "ru" || languageCode == "und") {
-                            // уже по-русски (или язык не определён) — оставляем как есть
-                            results[index] = ScreenTextBlock(line.rect, line.text, line.text)
-                            remaining--
-                            finishIfDone()
-                        } else {
-                            translateText(line.text, languageCode, "ru") { translated ->
-                                results[index] = ScreenTextBlock(line.rect, line.text, translated)
-                                remaining--
-                                finishIfDone()
+                        translator.downloadModelIfNeeded(conditions)
+                            .addOnSuccessListener {
+                                translateLinesOneByOne(translator, lines, 0, mutableListOf()) { blocks ->
+                                    showScreenTranslateOverlay(bitmap, blocks)
+                                    translator.close()
+                                }
                             }
-                        }
+                            .addOnFailureListener { e ->
+                                showNotification("Ошибка загрузки модели", e.message ?: "нужен интернет")
+                            }
                     }
-                    .addOnFailureListener {
-                        remaining--
-                        finishIfDone()
-                    }
-            }
+                }
+                .addOnFailureListener { e ->
+                    showNotification("Ошибка определения языка", e.message ?: "неизвестно")
+                }
         }
+    }
+
+    /** Переводит строки одну за другой одним и тем же переводчиком (последовательно,
+     *  без параллельных запросов) — надёжнее, чем создавать переводчик на каждую строку. */
+    private fun translateLinesOneByOne(
+        translator: com.google.mlkit.nl.translate.Translator,
+        lines: List<OcrLine>,
+        index: Int,
+        accumulated: MutableList<ScreenTextBlock>,
+        onDone: (List<ScreenTextBlock>) -> Unit
+    ) {
+        if (index >= lines.size) {
+            onDone(accumulated)
+            return
+        }
+        val line = lines[index]
+        translator.translate(line.text)
+            .addOnSuccessListener { translated ->
+                accumulated.add(ScreenTextBlock(line.rect, line.text, translated))
+                translateLinesOneByOne(translator, lines, index + 1, accumulated, onDone)
+            }
+            .addOnFailureListener {
+                accumulated.add(ScreenTextBlock(line.rect, line.text, line.text))
+                translateLinesOneByOne(translator, lines, index + 1, accumulated, onDone)
+            }
     }
 
     private fun showScreenTranslateOverlay(bitmap: Bitmap, blocks: List<ScreenTextBlock>) {
